@@ -1,0 +1,39 @@
+{
+  "name": "sbs-page-builder",
+  "version": "2.2.2",
+  "private": true,
+  "description": "Two SBS page builders over one project model: a simple three-concept builder for client presentation and an advanced DST builder with the WordPress importer pipeline.",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:client": "vite",
+    "dev:server": "node --watch server/index.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server/index.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:browser": "playwright test",
+    "test:all": "npm test && npm run test:browser",
+    "migrate:legacy": "node scripts/extract-legacy-page.mjs",
+    "test:bundle": "node scripts/test-project-bundle.mjs",
+    "test:wordpress": "php tests/wordpress/importer-unit.php",
+    "test:handoff": "npm run test:bundle && npm run test:wordpress && npm run test:wordpress:catalog",
+    "test:wordpress:catalog": "php tests/wordpress/importer-catalog-sweep.php",
+    "check:stock": "node scripts/check-shutterstock.mjs",
+    "test:upgrade": "node scripts/qa-upgrades.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "playwright": "^1.54.1",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "concurrently": "^9.1.2",
+    "supertest": "^7.1.1",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.1"
+  }
+}
