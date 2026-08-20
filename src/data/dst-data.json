@@ -7,7 +7,8 @@
     "familyCount": 19,
     "registeredComponentCount": 43,
     "registeredAttributeCount": 769,
-    "builderVersion": "2.0-fidelity"
+    "builderVersion": "2.0-fidelity",
+    "flowCount": 35
   },
   "patterns": [
     {
@@ -72780,7 +72781,7 @@
         "gradientPolicy": "none",
         "heroOverlay": {
           "kind": "flat",
-          "opacity": 0.0
+          "opacity": 0
         },
         "imagery": "framed-subject"
       },
@@ -73139,7 +73140,7 @@
         "gradientPolicy": "none",
         "heroOverlay": {
           "kind": "flat",
-          "opacity": 0.0
+          "opacity": 0
         },
         "imagery": "none"
       },
@@ -73352,7 +73353,7 @@
         "gradientPolicy": "none",
         "heroOverlay": {
           "kind": "flat",
-          "opacity": 0.0
+          "opacity": 0
         },
         "imagery": "none"
       },
@@ -73614,6 +73615,22 @@
   },
   "flows": [
     {
+      "id": "B3",
+      "name": "Before / After",
+      "tagline": "Transformation first, process second",
+      "bestFor": "Visual trades, exterior work, cleaning, remodeling.",
+      "avoid": "Projects without genuine before/after media.",
+      "families": [
+        "hero",
+        "slider",
+        "timeline",
+        "stats",
+        "testimonial",
+        "cta"
+      ],
+      "rhythm": "CTA at peak conviction after the reveal, then repeated at close."
+    },
+    {
       "id": "A1",
       "name": "Feature-Led",
       "tagline": "Clear offer, useful detail, decisive close",
@@ -73694,22 +73711,6 @@
         "cta"
       ],
       "rhythm": "Nav CTA plus a low-friction close after proof."
-    },
-    {
-      "id": "B3",
-      "name": "Before / After",
-      "tagline": "Transformation first, process second",
-      "bestFor": "Visual trades, exterior work, cleaning, remodeling.",
-      "avoid": "Projects without genuine before/after media.",
-      "families": [
-        "hero",
-        "slider",
-        "timeline",
-        "stats",
-        "testimonial",
-        "cta"
-      ],
-      "rhythm": "CTA at peak conviction after the reveal, then repeated at close."
     },
     {
       "id": "B4",
@@ -73951,6 +73952,244 @@
         "cta"
       ],
       "rhythm": "Story and people lead, useful content deepens trust, and contact closes the journey."
+    },
+    {
+      "id": "B5",
+      "name": "Case Study Spine",
+      "tagline": "Challenge, response, result, next step",
+      "bestFor": "Consultancies and services with a strong proof story.",
+      "families": [
+        "hero",
+        "text",
+        "split",
+        "stats",
+        "testimonial",
+        "cta"
+      ],
+      "rhythm": "Proof appears after the response, then the CTA closes the story."
+    },
+    {
+      "id": "B6",
+      "name": "Local Service Sprint",
+      "tagline": "Need, service area, proof, booking",
+      "bestFor": "Local services, clinics, and appointment-led businesses.",
+      "families": [
+        "hero",
+        "cards",
+        "logo",
+        "faq",
+        "contact"
+      ],
+      "rhythm": "One clear booking path is repeated after trust-building."
+    },
+    {
+      "id": "B7",
+      "name": "Product Launch",
+      "tagline": "Promise, product detail, proof, action",
+      "bestFor": "New products, software, and capability launches.",
+      "families": [
+        "hero",
+        "split",
+        "cards",
+        "tabs",
+        "testimonial",
+        "cta"
+      ],
+      "rhythm": "The action appears after product proof and again at the close."
+    },
+    {
+      "id": "B8",
+      "name": "Mission & Impact",
+      "tagline": "Purpose, programme, evidence, invitation",
+      "bestFor": "Nonprofits, public-interest teams, and mission-led organisations.",
+      "families": [
+        "hero",
+        "text",
+        "stats",
+        "timeline",
+        "team",
+        "cta"
+      ],
+      "rhythm": "Evidence makes the invitation credible before the closing band."
+    },
+    {
+      "id": "B9",
+      "name": "Event Registration",
+      "tagline": "The moment, agenda, speakers, registration",
+      "bestFor": "Conferences, workshops, webinars, and live launches.",
+      "families": [
+        "hero",
+        "text",
+        "timeline",
+        "team",
+        "faq",
+        "contact"
+      ],
+      "rhythm": "Registration appears in the hero and immediately after the agenda."
+    },
+    {
+      "id": "B10",
+      "name": "Before / After Proof",
+      "tagline": "Show the change, price the change, prove the change",
+      "bestFor": "Renovation, dental, aesthetics, fitness, restoration and any transformation offer.",
+      "avoid": "Services with nothing visual to compare.",
+      "families": [
+        "hero",
+        "split",
+        "gallery",
+        "pricing",
+        "testimonial",
+        "faq",
+        "cta"
+      ],
+      "rhythm": "The transformation appears twice: once as one story, once as a body of work."
+    },
+    {
+      "id": "B11",
+      "name": "Objection Clearing",
+      "tagline": "Promise, proof, objections, price, action",
+      "bestFor": "High-consideration purchases where the visitor arrives sceptical.",
+      "avoid": "Impulse or low-cost offers.",
+      "families": [
+        "hero",
+        "text",
+        "testimonial",
+        "faq",
+        "pricing",
+        "contact"
+      ],
+      "rhythm": "Every doubt is answered before the price is shown."
+    },
+    {
+      "id": "B12",
+      "name": "Compliance & Assurance",
+      "tagline": "Credentials first, capability second, contact third",
+      "bestFor": "Regulated sectors: legal, financial, medical, security, public sector.",
+      "avoid": "Playful consumer brands.",
+      "families": [
+        "hero",
+        "logo",
+        "stats",
+        "text",
+        "team",
+        "faq",
+        "contact"
+      ],
+      "rhythm": "Authority is established before anything is asked for."
+    },
+    {
+      "id": "B13",
+      "name": "Service Menu",
+      "tagline": "One promise, many services, one booking path",
+      "bestFor": "Multi-service practices, clinics, agencies and trades.",
+      "avoid": "Single-product businesses.",
+      "families": [
+        "hero",
+        "cards",
+        "tabs",
+        "pricing",
+        "testimonial",
+        "contact"
+      ],
+      "rhythm": "The menu is scannable, then the page narrows to one action."
+    },
+    {
+      "id": "B14",
+      "name": "Founder Story",
+      "tagline": "Person, purpose, practice, proof",
+      "bestFor": "Consultants, coaches, studios and practices built around named people.",
+      "avoid": "Large organisations with no single voice.",
+      "families": [
+        "hero",
+        "split",
+        "timeline",
+        "team",
+        "testimonial",
+        "cta"
+      ],
+      "rhythm": "The story earns the credibility that the closing band spends."
+    },
+    {
+      "id": "B15",
+      "name": "Location & Visit",
+      "tagline": "Find us, trust us, come in",
+      "bestFor": "Clinics, showrooms, restaurants, venues and any premises-led business.",
+      "avoid": "Remote-only businesses.",
+      "families": [
+        "hero",
+        "cards",
+        "gallery",
+        "stats",
+        "faq",
+        "contact"
+      ],
+      "rhythm": "Practical detail is never more than one section away."
+    },
+    {
+      "id": "C4",
+      "name": "Feature Comparison",
+      "tagline": "Position, compare, prove, convert",
+      "bestFor": "Products and platforms sold against a known alternative.",
+      "avoid": "Categories with no obvious competitor.",
+      "families": [
+        "hero",
+        "split",
+        "tabs",
+        "stats",
+        "pricing",
+        "faq",
+        "cta"
+      ],
+      "rhythm": "The comparison sits between the claim and the price."
+    },
+    {
+      "id": "C5",
+      "name": "Free-Trial Funnel",
+      "tagline": "Value in one line, product in three, start now",
+      "bestFor": "Self-serve software with a trial or freemium tier.",
+      "avoid": "Sales-led enterprise offers.",
+      "families": [
+        "hero",
+        "logo",
+        "cards",
+        "split",
+        "pricing",
+        "faq",
+        "cta"
+      ],
+      "rhythm": "The same action appears in the hero, mid-page and close."
+    },
+    {
+      "id": "D4",
+      "name": "Resource Hub",
+      "tagline": "Answer the question, then offer the next one",
+      "bestFor": "Content-led acquisition, education and search-first pages.",
+      "avoid": "Pages with a single hard conversion target.",
+      "families": [
+        "hero",
+        "text",
+        "blog",
+        "accordion",
+        "contact"
+      ],
+      "rhythm": "Utility first; the conversion is an offer, not a demand."
+    },
+    {
+      "id": "F3",
+      "name": "Editorial Long-Read",
+      "tagline": "One argument, told properly, ending in an invitation",
+      "bestFor": "Thought leadership, manifestos, campaign and brand pages.",
+      "avoid": "Pages that must convert in the first screen.",
+      "families": [
+        "hero",
+        "text",
+        "split",
+        "timeline",
+        "gallery",
+        "testimonial",
+        "cta"
+      ],
+      "rhythm": "A single argument developed section by section."
     }
   ],
   "defaultPatternByFamily": {

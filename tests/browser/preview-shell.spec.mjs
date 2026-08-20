@@ -131,7 +131,7 @@ test.describe('preview shell', () => {
   test('the device choice survives a reload', async ({ page }) => {
     await open(page);
     await page.locator('.device-btn[data-device="tablet"]').click();
-    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('sbs-dst-page-builder-v2') || '{}').device)).toBe('tablet');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('sbs-builder-v3') || '{}').device)).toBe('tablet');
     await page.reload();
     await page.waitForFunction(() => Boolean(window.__SBS_TEST_API));
     await expect(page.locator('#deviceShell')).toHaveClass(/\btablet\b/);

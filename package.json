@@ -1,8 +1,8 @@
 {
   "name": "sbs-page-builder",
-  "version": "2.2.2",
+  "version": "2.5.0",
   "private": true,
-  "description": "Two SBS page builders over one project model: a simple three-concept builder for client presentation and an advanced DST builder with the WordPress importer pipeline.",
+  "description": "One SBS project, 50 production styles across 10 families, three independently editable concept workspaces, two interfaces over one engine.",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
@@ -15,6 +15,9 @@
     "test:watch": "vitest",
     "test:browser": "playwright test",
     "test:all": "npm test && npm run test:browser",
+    "qa:concepts": "node scripts/qa-concepts.mjs",
+    "styles:build": "node scripts/styles-build.mjs",
+    "styles:validate": "node scripts/styles-build.mjs --no-docs",
     "migrate:legacy": "node scripts/extract-legacy-page.mjs",
     "test:bundle": "node scripts/test-project-bundle.mjs",
     "test:wordpress": "php tests/wordpress/importer-unit.php",

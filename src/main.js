@@ -19,8 +19,11 @@ function installButtonStyleSwatchCss() {
 /** Load the large, rarely changing pattern catalog on demand. */
 async function bootstrap() {
   installButtonStyleSwatchCss();
-  const { default: catalog } = await import('./data/dst-data.json');
-  initializeBuilder(catalog, DST_SHARED_CSS, briefBrainFeature);
+  const [{ default: catalog }, { default: styleLibrary }] = await Promise.all([
+    import('./data/dst-data.json'),
+    import('./data/style-library.json'),
+  ]);
+  initializeBuilder(catalog, DST_SHARED_CSS, briefBrainFeature, { styleLibrary });
 }
 
 bootstrap();

@@ -226,15 +226,32 @@ export const SectionContentSchema = z.object({
   buttons: z.array(ContentButtonSchema).max(2).default([]),
 });
 
+export const FooterContentSchema = z.object({
+  statement: optionalText(160),
+  description: optionalText(300),
+  ctaText: optionalText(60),
+});
+
 export const PageContentSchema = z.object({
   sections: z.array(SectionContentSchema).min(1).max(14),
+  footer: FooterContentSchema.nullable().default(null),
 });
 
 export const PageContentJsonSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
-  required: ['sections'],
+  required: ['sections', 'footer'],
   properties: {
+    footer: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['statement'],
+      properties: {
+        statement: { type: 'string' },
+        description: { type: 'string' },
+        ctaText: { type: 'string' },
+      },
+    },
     sections: {
       type: 'array',
       items: {
@@ -272,6 +289,11 @@ export const PageContentJsonSchema = Object.freeze({
 
 const BUTTON_TYPES = new Set(['primary', 'secondary', 'link']);
 
+function footerCta(raw) {
+  const value = pick(raw, 'ctaText', 'cta', 'buttonText', 'action', 'button');
+  return isObject(value) ? pick(value, 'text', 'label', 'title') : value;
+}
+
 export function coercePageContent(value) {
   const raw = isObject(value) ? value : Array.isArray(value) ? { sections: value } : {};
   const sections = list(pick(raw, 'sections', 'page', 'blocks', 'modules'), 14).map((entry) => {
@@ -301,7 +323,15 @@ export function coercePageContent(value) {
       }).filter((button) => button.text),
     };
   }).filter(Boolean);
-  return { sections };
+  const footerRaw = pick(raw, 'footer', 'closing', 'signoff');
+  const footer = isObject(footerRaw) ? {
+    statement: text(pick(footerRaw, 'statement', 'closing', 'headline', 'title', 'heading'), 160),
+    description: text(pick(footerRaw, 'description', 'subtitle', 'body', 'supporting', 'sub'), 300),
+    // `cta` is sometimes answered as an object, sometimes as a string. Only the
+    // label is wanted either way — the builder owns every link on the page.
+    ctaText: text(footerCta(footerRaw), 60),
+  } : null;
+  return { sections, footer: footer && footer.statement ? footer : null };
 }
 
 /* ------------------------------------------------------------------ *

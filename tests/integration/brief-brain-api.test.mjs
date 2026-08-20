@@ -197,6 +197,31 @@ describe('POST /api/brief/content', () => {
     expect(response.body.sections[2].title).toBeTruthy();
   });
 
+  it('keeps the footer the model wrote', async () => {
+    const { provider } = stubProvider([{
+      sections: families.map((family) => ({ family, title: 'Heading for ' + family, items: [], buttons: [] })),
+      footer: { statement: 'Care that comes to you.', description: 'Same-week appointments, fixed pricing.', ctaText: 'Book online' },
+    }]);
+    const response = await request(appWith(provider)).post('/api/brief/content').send({ brief: BRIEF, families }).expect(200);
+    expect(response.body.footer).toMatchObject({
+      statement: 'Care that comes to you.',
+      description: 'Same-week appointments, fixed pricing.',
+      ctaText: 'Book online',
+    });
+  });
+
+  // The closing band is not optional on the page, so it is not optional in the
+  // answer either: a model that skipped it gets the deterministic footer.
+  it('drafts the footer locally when the model skipped it', async () => {
+    const { provider } = stubProvider([{
+      sections: families.map((family) => ({ family, title: 'Heading for ' + family, items: [], buttons: [] })),
+    }]);
+    const response = await request(appWith(provider)).post('/api/brief/content').send({ brief: BRIEF, families }).expect(200);
+    expect(response.body.footer.aiWritten).toBe(false);
+    expect(response.body.footer.statement).toBeTruthy();
+    expect(response.body.footer.ctaText).toBeTruthy();
+  });
+
   it('requires the ordered families', async () => {
     const { provider } = stubProvider([{}]);
     await request(appWith(provider)).post('/api/brief/content').send({ brief: BRIEF, families: [] }).expect(422);

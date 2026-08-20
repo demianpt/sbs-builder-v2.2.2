@@ -9,7 +9,15 @@ button,input,textarea,select{font:inherit}button{color:inherit}a{color:inherit}.
 .app{height:100%;display:grid;grid-template-columns:var(--side-w) var(--editor-w) minmax(440px,1fr);grid-template-rows:var(--top-h) 1fr;grid-template-areas:"top top top" "side editor preview"}
 .topbar{grid-area:top;display:flex;align-items:center;gap:16px;padding:0 18px;background:#fbfaf7;border-bottom:1px solid var(--ui-line);z-index:50;min-width:0}
 .brand{display:flex;align-items:center;gap:11px;width:216px;flex:0 0 216px}.brand-mark{width:31px;height:31px;display:grid;place-items:center;background:var(--ui-side);color:#fff;font:600 12px/1 DM Mono,monospace;letter-spacing:-.04em;position:relative}border:2px solid #fbfaf7}.brand-copy b{display:block;font-size:13px;letter-spacing:.01em}.brand-copy span{display:block;font:400 10px/1.25 DM Mono,monospace;color:var(--ui-muted);margin-top:2px;text-transform:uppercase;letter-spacing:.08em}
-.project-title{height:34px;border:1px solid transparent;background:transparent;font-weight:600;min-width:170px;max-width:300px;padding:0 9px;border-radius:5px}.project-title:hover,.project-title:focus{background:#fff;border-color:var(--ui-line);outline:none}.save-status{font-size:11px;color:var(--ui-muted);white-space:nowrap}.save-status:before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ui-green);margin-right:6px;vertical-align:1px}
+.save-pill{position:fixed;right:18px;bottom:18px;z-index:120;display:flex;align-items:center;gap:7px;padding:8px 14px 8px 11px;border-radius:999px;border:1px solid var(--ui-line);background:#fff;box-shadow:0 10px 30px rgba(16,22,30,.16);font:600 11px Inter,sans-serif;color:var(--ui-ink);opacity:0;transform:translateY(8px);transition:opacity .22s ease,transform .22s ease;pointer-events:none}
+.save-pill.is-visible{opacity:1;transform:translateY(0)}
+.save-pill:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ui-green)}
+/* Saving is the only state with movement, because it is the only state that is
+   still happening. */
+.save-pill.is-saving:before{background:var(--ui-side);animation:save-pulse 1s ease-in-out infinite}
+@keyframes save-pulse{50%{opacity:.25}}
+@media(prefers-reduced-motion:reduce){.save-pill{transition:none}.save-pill.is-saving:before{animation:none}}
+.project-title{height:34px;border:1px solid transparent;background:transparent;font-weight:600;min-width:170px;max-width:300px;padding:0 9px;border-radius:5px}.project-title:hover,.project-title:focus{background:#fff;border-color:var(--ui-line);outline:none}
 .top-spacer{flex:1}.top-group{display:flex;align-items:center;gap:5px}.icon-btn,.top-btn{height:34px;border:1px solid var(--ui-line);background:#fff;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;transition:.15s ease}.icon-btn{width:34px;padding:0}.top-btn{padding:0 12px;font-size:12px;font-weight:600}.icon-btn:hover,.top-btn:hover{border-color:#aaa69d;background:#f7f5f1}.icon-btn:disabled{opacity:.35;cursor:not-allowed}.top-btn.primary{border-color:var(--ui-side);background:var(--ui-side);color:#fff}.top-btn.primary:hover{background:#292e33}.top-btn svg,.icon-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8}
 .sidebar{grid-area:side;background:var(--ui-side);color:var(--ui-side-text);display:flex;flex-direction:column;min-height:0;border-right:1px solid #000}.side-head{padding:24px 22px 17px;border-bottom:1px solid #2a2e32}.side-kicker{font:500 10px/1 DM Mono,monospace;color:#8f969d;text-transform:uppercase;letter-spacing:.13em}.side-head h2{font:600 21px/1.08 Source Serif 4,serif;margin:10px 0 7px}.side-head p{font-size:11px;line-height:1.5;color:#aeb4b9;margin:0}.steps{list-style:none;padding:12px 10px;margin:0;overflow:auto}.step-btn{width:100%;border:0;background:transparent;color:#aeb3b8;display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;text-align:left;padding:11px 10px;border-radius:5px;cursor:pointer;margin:1px 0}.step-btn:hover{background:#1d2125;color:#fff}.step-btn.active{background:#262b30;color:#fff}.step-btn.done .step-num{background:#315c4c;color:#d7f4e8;border-color:#315c4c}.step-num{width:27px;height:27px;border:1px solid #464c52;display:grid;place-items:center;border-radius:50%;font:500 10px/1 DM Mono,monospace}.step-copy b{display:block;font-size:12px;font-weight:600}.step-copy span{display:block;font-size:10px;color:#7f878e;margin-top:3px}.step-state{width:5px;height:5px;border-radius:50%;background:transparent}.step-btn.active .step-state{background:var(--ui-accent)}
 .side-foot{margin-top:auto;padding:16px 18px 18px;border-top:1px solid #2a2e32}.library-count{display:grid;grid-template-columns:1fr 1fr;gap:8px}.library-stat{background:#1b1f23;border:1px solid #2b3035;padding:10px}.library-stat b{display:block;font:500 18px/1 DM Mono,monospace}.library-stat span{display:block;font-size:9px;color:#8d949a;text-transform:uppercase;letter-spacing:.08em;margin-top:5px}.skill-pill{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:10px;color:#9ba2a8}.skill-pill i{width:7px;height:7px;border-radius:50%;background:#5cc58f;box-shadow:0 0 0 3px rgba(92,197,143,.11)}
@@ -44,10 +52,12 @@ button,input,textarea,select{font:inherit}button{color:inherit}a{color:inherit}.
 .device-shell.mobile:after{content:"";position:absolute;bottom:5px;left:50%;transform:translateX(-50%);width:118px;height:4px;border-radius:99px;background:rgba(20,22,24,.4);z-index:2}.site-frame{display:block;width:100%;height:calc(100vh - 150px);min-height:700px;border:0;background:#fff}
 .empty-state{text-align:center;padding:35px 20px;border:1px dashed #c7c3bb}.empty-state b{font:600 20px Source Serif 4,serif}.empty-state p{font-size:11px;color:var(--ui-muted);line-height:1.5}.empty-state button{margin-top:7px}
 .modal{position:fixed;inset:0;background:rgba(13,15,17,.62);z-index:200;display:none;align-items:center;justify-content:center;padding:30px}.modal.open{display:flex}.modal-card{width:min(1120px,95vw);height:min(800px,90vh);background:#f7f6f3;display:grid;grid-template-rows:auto auto 1fr;box-shadow:0 30px 100px rgba(0,0,0,.35)}.modal-head{display:flex;align-items:center;gap:15px;padding:18px 20px;background:#fff;border-bottom:1px solid var(--ui-line)}.modal-head h2{font:600 22px Source Serif 4,serif;margin:0}.modal-head p{font-size:10px;color:var(--ui-muted);margin:3px 0 0}.close-btn{margin-left:auto;width:34px;height:34px;border:1px solid var(--ui-line);background:#fff;cursor:pointer}.modal-tools{display:flex;gap:8px;padding:11px 20px;border-bottom:1px solid var(--ui-line)}.modal-tools input,.modal-tools select{height:35px;border:1px solid var(--ui-line);background:#fff;padding:0 10px;font-size:10px}.modal-tools input{flex:1}.pattern-grid{overflow:auto;padding:16px 20px 26px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-content:start}.pattern-card{border:1px solid var(--ui-line);background:#fff;cursor:pointer;text-align:left;padding:0;min-width:0}.pattern-card:hover{border-color:#85817a;transform:translateY(-1px)}.pattern-card.selected{border-color:var(--ui-accent);box-shadow:inset 0 0 0 1px var(--ui-accent)}.pattern-visual{height:112px;background:#ebe8e2;position:relative;overflow:hidden}.pattern-visual .pv-copy{position:absolute;left:12px;top:15px;width:44%}.pv-copy i{display:block;height:5px;background:#a9a49b;margin-bottom:6px}.pv-copy i:nth-child(2){width:78%;background:#c1bdb5}.pv-copy i:nth-child(3){width:60%;background:#c1bdb5}.pattern-visual .pv-media{position:absolute;right:10px;top:10px;bottom:10px;width:37%;background:#c3beb4}.pattern-visual.cards .pv-media{left:10px;right:10px;top:auto;bottom:10px;height:45%;width:auto;background:repeating-linear-gradient(90deg,#bdb8af 0,#bdb8af 30%,transparent 30%,transparent 34%)}.pattern-visual.text .pv-media{display:none}.pattern-card-body{padding:10px}.pattern-card-body b{display:block;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pattern-card-body span{display:block;font:400 8px DM Mono,monospace;color:var(--ui-muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pattern-card-body p{font-size:8px;color:#92959a;line-height:1.35;height:22px;overflow:hidden;margin:6px 0 0}
-.toast{position:fixed;right:18px;bottom:18px;z-index:400;background:#15181b;color:#fff;padding:11px 14px;min-width:230px;box-shadow:0 8px 30px rgba(0,0,0,.25);display:flex;align-items:center;gap:9px;font-size:10px;transform:translateY(80px);opacity:0;transition:.2s}.toast.show{transform:none;opacity:1}.toast i{width:7px;height:7px;border-radius:50%;background:#5cc58f}.kbd{font:500 8px DM Mono,monospace;border:1px solid #cac6bf;background:#eeeae4;padding:2px 4px;border-radius:3px}
+/* Stacked above the save pill, which shares this corner and appears on every
+   edit, so the two must never sit on top of each other. */
+.toast{position:fixed;right:18px;bottom:66px;z-index:400;background:#15181b;color:#fff;padding:11px 14px;min-width:230px;box-shadow:0 8px 30px rgba(0,0,0,.25);display:flex;align-items:center;gap:9px;font-size:10px;transform:translateY(80px);opacity:0;transition:.2s}.toast.show{transform:none;opacity:1}.toast i{width:7px;height:7px;border-radius:50%;background:#5cc58f}.kbd{font:500 8px DM Mono,monospace;border:1px solid #cac6bf;background:#eeeae4;padding:2px 4px;border-radius:3px}
 @media(max-width:1280px){:root{--side-w:196px;--editor-w:minmax(380px,430px);--editor-max:430px}.brand{width:170px;flex-basis:170px}.editor-inner{padding-inline:22px}.editor-nav{padding-inline:22px}.pattern-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:980px){.app{grid-template-columns:210px 1fr;grid-template-areas:"top top" "side editor"}.preview{display:none}.topbar .preview-only{display:none}:root{--editor-max:720px}.editor-inner{max-width:720px}.editor-nav{left:210px;width:calc(100vw - 210px);max-width:none}.brand{width:174px;flex-basis:174px}}
-@media(max-width:720px){body{overflow:auto}.app{height:auto;min-height:100vh;display:block;padding-top:58px}.topbar{position:fixed;inset:0 0 auto;height:58px}.brand{width:auto;flex-basis:auto}.brand-copy,.save-status,.topbar .optional{display:none}.sidebar{display:none}.editor{overflow:visible}.editor-inner{padding:24px 18px 100px}.editor-nav{left:0;width:100%;padding-inline:18px}.field-grid,.field-grid.three,.choice-grid,.range-row{grid-template-columns:1fr}.palette-row{grid-template-columns:repeat(5,1fr)}.pattern-grid{grid-template-columns:repeat(2,1fr)}.modal{padding:10px}.top-group .top-btn span{display:none}}
+@media(max-width:720px){body{overflow:auto}.app{height:auto;min-height:100vh;display:block;padding-top:58px}.topbar{position:fixed;inset:0 0 auto;height:58px}.brand{width:auto;flex-basis:auto}.brand-copy,.topbar .optional{display:none}.save-pill{right:12px;bottom:12px}.sidebar{display:none}.editor{overflow:visible}.editor-inner{padding:24px 18px 100px}.editor-nav{left:0;width:100%;padding-inline:18px}.field-grid,.field-grid.three,.choice-grid,.range-row{grid-template-columns:1fr}.palette-row{grid-template-columns:repeat(5,1fr)}.pattern-grid{grid-template-columns:repeat(2,1fr)}.modal{padding:10px}.top-group .top-btn span{display:none}}
 
 
 /* ===== SBS Page Builder v2 — global editing + explained design dials ===== */
@@ -101,31 +111,29 @@ button,input,textarea,select{font:inherit}button{color:inherit}a{color:inherit}.
 .dial-group-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
 .dial-group-head h3{font:700 10px/1.2 DM Mono,monospace;letter-spacing:.06em;text-transform:uppercase;margin:0;color:#34373b}
 .dial-group-head p{font-size:9px;line-height:1.35;color:var(--ui-muted);margin:0;text-align:right;max-width:30ch}
-.dial{padding:11px 0;border-bottom:1px solid #f2efe9}
-.dial:last-child{border-bottom:0;padding-bottom:0}
+.dial-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 18px}
+.dial{padding:11px 0;border-bottom:1px solid #f2efe9;min-width:0}
+/* In a two-column grid "last child" is not the last row, so the rule under the
+   final pair is removed by position instead. */
+.dial:last-child,.dial:nth-last-child(2):nth-child(odd){border-bottom:0;padding-bottom:0}
 .dial>label{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:10px;font-weight:700;color:#34373b}
 .dial>label output{font:400 9px DM Mono,monospace;color:#565a60;text-align:right;white-space:nowrap}
 .dial input[type=range]{width:100%;margin:7px 0 0;accent-color:var(--ui-side)}
 .dial-scale{display:flex;justify-content:space-between;font:400 8px DM Mono,monospace;color:#8f9398;margin-top:3px;text-transform:uppercase;letter-spacing:.05em}
-.dial-help{font-size:9px;line-height:1.5;color:var(--ui-muted);margin:6px 0 0;max-width:64ch}
+.dial-help{font-size:9px;line-height:1.5;color:var(--ui-muted);margin:6px 0 0;max-width:44ch}
 
 /* The live sample: every dial change is visible here without scrolling the
    preview, which is the whole point of a dial you can trust. */
 .dial-sample{border:1px solid var(--ui-line);background:var(--sample-bg,#fff);padding:13px;margin-bottom:16px;overflow:hidden}
-.dial-sample-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:calc(var(--sample-gap,2rem) * .34)}
+.dial-sample-row{display:grid;grid-template-columns:minmax(0,1fr);gap:calc(var(--sample-gap,2rem) * .34)}
 .dial-sample-card{background:color-mix(in srgb,#fff 70%,var(--sample-bg,#fff));border:1px solid color-mix(in srgb,var(--sample-ink,#181a1d) var(--sample-border,10%),transparent);border-radius:calc(var(--sample-radius,0px) * .6);padding:calc(var(--sample-pad,3rem) * .32);box-shadow:var(--sample-shadow,none);transition:transform var(--sample-duration,.3s) var(--sample-ease,ease),opacity var(--sample-duration,.3s) var(--sample-ease,ease)}
-.dial-sample-card:nth-child(2){transition-delay:var(--sample-stagger,0ms)}
-.dial-sample-card:nth-child(3){transition-delay:calc(var(--sample-stagger,0ms) * 2)}
 .dial-sample-card b{display:block;font-family:Source Serif 4,serif;font-size:calc(12px * var(--sample-scale,1));line-height:1.15;letter-spacing:var(--sample-tracking,0);color:var(--sample-ink,#181a1d);margin-bottom:5px}
 .dial-sample-card p{font-size:9px;line-height:var(--sample-lh,1.6);color:color-mix(in srgb,var(--sample-ink,#181a1d) 72%,transparent);margin:0;max-width:var(--sample-measure,60ch)}
 .dial-sample-row:hover .dial-sample-card{transform:translateY(calc(-1 * var(--sample-lift,2px)))}
-.dial-sample.is-arriving .dial-sample-card{opacity:0;transform:translateY(var(--sample-distance,20px)) scale(var(--sample-motion-scale,1))}
-.dial-sample-foot{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:11px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--sample-ink,#181a1d) var(--sample-border,10%),transparent)}
+.dial-sample-foot{display:flex;align-items:baseline;gap:12px;margin-top:11px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--sample-ink,#181a1d) var(--sample-border,10%),transparent)}
 .dial-sample-title{font-family:Source Serif 4,serif;font-size:calc(15px * var(--sample-scale,1));line-height:1.05;letter-spacing:var(--sample-tracking,0);color:var(--sample-ink,#181a1d)}
 .dial-sample-accent{display:inline-block;width:34px;height:var(--sample-accent-rule,2px);background:var(--sample-accent,#ed5b38);vertical-align:middle;margin-right:7px}
-.dial-sample-replay{border:1px solid color-mix(in srgb,var(--sample-ink,#181a1d) 22%,transparent);background:transparent;color:var(--sample-ink,#181a1d);font:700 9px Inter,sans-serif;padding:6px 9px;cursor:pointer;border-radius:calc(var(--sample-radius,0px) * .5);white-space:nowrap}
-.dial-sample-replay:hover{background:color-mix(in srgb,var(--sample-ink,#181a1d) 8%,transparent)}
-@media(prefers-reduced-motion:reduce){.dial-sample-card{transition:none}.dial-sample.is-arriving .dial-sample-card{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.dial-sample-card{transition:none}}
 
 .btn-style-list{display:flex;flex-direction:column;gap:8px}
 .btn-style-card{display:block;border:1px solid var(--ui-line);background:#fff;padding:12px;cursor:pointer;transition:.15s;position:relative}
@@ -149,8 +157,7 @@ button,input,textarea,select{font:inherit}button{color:inherit}a{color:inherit}.
   .preset-grid{grid-template-columns:1fr}
   .dial-group-head{display:block}
   .dial-group-head p{text-align:left;margin-top:4px}
-  .dial-sample-row{grid-template-columns:1fr}
-  .dial-sample-card:nth-child(3){display:none}
+  .dial-grid{grid-template-columns:1fr}
   .view-switch{display:block}
   .view-switch-control{margin-top:10px;flex-basis:auto}
 }
@@ -182,6 +189,74 @@ button,input,textarea,select{font:inherit}button{color:inherit}a{color:inherit}.
 .concept-pill.is-active{background:#fff;border-color:#fff;color:#15181b}
 .concept-bar-name{font-size:10px;color:rgba(255,255,255,.72);max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(prefers-reduced-motion:reduce){.concept-pill{transition:none}}
+/* A concept whose published snapshot is older than its editor state. */
+.concept-pill.has-draft::after{content:'';position:absolute;top:4px;right:4px;width:4px;height:4px;border-radius:50%;background:var(--ui-accent,#B5412B)}
+.concept-pill{position:relative}
+.concept-pill.is-active.has-draft::after{background:#B5412B}
+
+/* The style library picker: ten families, five styles each. */
+.style-families{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px;margin-bottom:14px}
+.style-family{text-align:left;border:1px solid var(--ui-line);background:#fff;padding:10px 11px;cursor:pointer;transition:border-color .14s,background .14s}
+.style-family:hover{border-color:#b2afa7}
+.style-family.is-active{border-color:var(--ui-ink);box-shadow:inset 3px 0 0 var(--ui-accent)}
+.style-family b{display:block;font-size:12px;margin-bottom:3px}
+.style-family span{display:block;font-size:10px;line-height:1.4;color:var(--ui-muted)}
+.style-family em{display:block;margin-top:6px;font:500 8px DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--ui-muted);font-style:normal}
+.style-family-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:10px 0 9px;border-top:1px solid var(--ui-line)}
+.style-family-head b{font-size:12px}
+.style-family-head span{font-size:10px;color:var(--ui-muted)}
+.style-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:8px}
+.style-card{position:relative;text-align:left;border:1px solid var(--ui-line);background:#fff;padding:11px;cursor:pointer;transition:border-color .14s,box-shadow .14s}
+.style-card:hover{border-color:#b2afa7}
+.style-card.is-active{border-color:var(--ui-ink);box-shadow:inset 3px 0 0 var(--ui-accent)}
+.style-card__swatches{display:flex;height:18px;margin-bottom:9px;border:1px solid rgba(0,0,0,.1)}
+.style-card__swatches i{flex:1}
+.style-card b{display:block;font-size:12px;margin-bottom:4px}
+.style-card p{margin:0;font-size:10px;line-height:1.45;color:var(--ui-muted)}
+.style-card__meta{display:flex;flex-wrap:wrap;gap:4px;margin-top:9px}
+.style-card__meta em,.style-card__meta span{font:500 8px DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;padding:2px 5px;border:1px solid var(--ui-line);color:var(--ui-muted);font-style:normal}
+.style-card__meta em{border-color:var(--ui-ink);color:var(--ui-ink)}
+.style-card__active{position:absolute;top:9px;right:9px;font:600 8px DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--ui-accent)}
+.style-actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:14px;padding-top:13px;border-top:1px solid var(--ui-line)}
+@media(prefers-reduced-motion:reduce){.style-family,.style-card{transition:none}}
+
+/* The concept workspaces panel, on both review steps. */
+.concept-rows{display:flex;flex-direction:column;gap:9px;margin-bottom:14px}
+.concept-row{display:grid;grid-template-columns:118px 1fr;gap:14px;align-items:start;border:1px solid var(--ui-line);background:#fff;padding:12px 13px}
+.concept-row.is-active{border-color:var(--ui-ink);box-shadow:inset 3px 0 0 var(--ui-accent)}
+.concept-row__id b{display:block;font:600 13px/1.1 inherit}
+.concept-row__id span{display:block;font-size:11px;color:var(--ui-muted);margin-top:3px}
+.concept-row__facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px 14px;margin:0}
+.concept-row__facts dt{font:500 8px DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--ui-muted)}
+.concept-row__facts dd{margin:2px 0 0;font-size:11px}
+.concept-row__actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-top:10px;margin-top:2px;border-top:1px solid var(--ui-line)}
+.concept-row__here{font:500 9px DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--ui-accent);margin-right:auto}
+/*
+ * Icon actions.
+ *
+ * These used to be full sentences inside `.mini-btn`, which is a fixed 27px
+ * square — the labels overflowed and printed over each other. An icon plus the
+ * destination slot fits, and the whole sentence is on hover and in the
+ * accessible name.
+ */
+.concept-action{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:5px;height:30px;min-width:30px;padding:0 8px;border:1px solid var(--ui-line);background:#fff;color:#5c6066;cursor:pointer;border-radius:3px;transition:background .14s,border-color .14s,color .14s}
+.concept-action svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.concept-action b{font:600 9px DM Mono,monospace;letter-spacing:.06em}
+.concept-action:hover{background:var(--ui-ink);border-color:var(--ui-ink);color:#fff}
+.concept-action:focus-visible{outline:2px solid var(--ui-accent);outline-offset:2px}
+/* The hover label. Above the button, so a row at the bottom of the panel still
+   shows it, and `pointer-events:none` so it can never eat the click. */
+.concept-action::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%) translateY(3px);z-index:8;padding:5px 8px;background:var(--ui-ink);color:#fff;font:500 10px/1.35 Inter,system-ui,sans-serif;letter-spacing:0;text-transform:none;white-space:nowrap;border-radius:3px;box-shadow:0 4px 14px rgba(13,15,17,.22);opacity:0;pointer-events:none;transition:opacity .14s,transform .14s}
+.concept-action::before{content:'';position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(-50%) translateY(3px);z-index:8;border:4px solid transparent;border-top-color:var(--ui-ink);opacity:0;pointer-events:none;transition:opacity .14s,transform .14s}
+.concept-action:hover::after,.concept-action:hover::before,.concept-action:focus-visible::after,.concept-action:focus-visible::before{opacity:1;transform:translateX(-50%) translateY(0)}
+.concept-action:first-of-type::after{left:0;transform:translateX(0) translateY(3px)}
+.concept-action:first-of-type:hover::after,.concept-action:first-of-type:focus-visible::after{transform:translateX(0) translateY(0)}
+.concept-action:last-of-type:not(:first-of-type)::after{left:auto;right:0;transform:translateX(0) translateY(3px)}
+.concept-action:last-of-type:not(:first-of-type):hover::after,.concept-action:last-of-type:not(:first-of-type):focus-visible::after{transform:translateX(0) translateY(0)}
+/* A tip wider than the panel would push the layout sideways, so let it wrap. */
+@media(max-width:560px){.concept-action::after{white-space:normal;width:max-content;max-width:180px}}
+@media(prefers-reduced-motion:reduce){.concept-action,.concept-action::after,.concept-action::before{transition:none}}
+@media(max-width:720px){.concept-row{grid-template-columns:1fr}}
 
 /* Concept cards in Step 01. */
 .concept-grid{display:flex;flex-direction:column;gap:9px}
@@ -353,6 +428,24 @@ button,input,textarea,select{font:inherit}button{color:inherit}a{color:inherit}.
 }
 @keyframes pv-hint-in{from{opacity:0;transform:translate(-50%,6px)}to{opacity:1;transform:translate(-50%,0)}}
 .pv-hud.is-single .pv-hud__hint{display:none}
+/* A mid tone, because the frame has to read on the light header and on the
+   inverted footer without a second rule for each. */
+.pv-hud.is-chrome .pv-hud__frame{border-color:#6b737c;box-shadow:0 0 0 1px rgba(255,255,255,.28),0 18px 44px -22px rgba(20,18,16,.6);background:linear-gradient(180deg,rgba(107,115,124,.1),rgba(107,115,124,0) 130px)}
+.pv-hud.is-chrome .pv-hud__index{background:var(--ui-side);min-width:30px;letter-spacing:.04em}
+/* One strip, just below the navigation: nothing the overlay owns overlaps
+   anything the navigation owns. */
+.pv-hud.is-chrome.is-header .pv-hud__bar{top:calc(100% + 10px);left:96px;border-radius:4px}
+.pv-hud.is-chrome.is-header .pv-hud__tools{top:calc(100% + 10px);right:12px}
+.pv-hud.is-chrome.is-header .pv-hud__arrow{top:calc(100% + 10px);transform:none;width:34px;height:34px}
+.pv-hud.is-chrome.is-header .pv-hud__arrow:hover{transform:scale(1.08)}
+.pv-hud.is-chrome.is-header .pv-hud__arrow:active{transform:scale(.94)}
+.pv-hud.is-chrome.is-header .pv-hud__arrow svg{width:16px;height:16px}
+.pv-hud.is-chrome.is-header .pv-hud__arrow.-prev{left:12px;right:auto}
+.pv-hud.is-chrome.is-header .pv-hud__arrow.-next{left:52px;right:auto}
+/* The hint would be a third thing on that line; the arrows are right there and
+   the count is in the bar, so it says its piece under the footer only. */
+.pv-hud.is-chrome.is-header .pv-hud__hint{display:none}
+.pv-hud.is-chrome .pv-hud__arrow:hover{background:var(--ui-side);border-color:var(--ui-side)}
 
 @media(prefers-reduced-motion:reduce){
   .pv-hud__frame,.pv-hud__hint{animation-duration:.01ms;animation-delay:0s}

@@ -22,7 +22,9 @@ const MESSAGES = Object.freeze({
   BRIEF_REQUIRED: 'Write a little more about the project — a few sentences is enough.',
   MODEL_UNSUPPORTED: 'This build cannot choose a model. Reload the page.',
   STOCK_NOT_CONFIGURED: 'Stock imagery is not set up on this machine. Add the Shutterstock credentials to .env and restart the server.',
-  STOCK_UNAVAILABLE: 'Shutterstock could not be reached. Check the credentials and the connection, then try again.',
+  STOCK_UNAVAILABLE: 'Shutterstock could not complete the search. Try again in a moment.',
+  STOCK_RATE_LIMITED: "Shutterstock's request limit for this account is used up. Nothing is wrong with the setup — it resets on the hour.",
+  STOCK_DENIED: 'Shutterstock refused these credentials. Check the API token, or the client id and secret, in .env and restart the server.',
   STOCK_TIMEOUT: 'Shutterstock took too long to answer. Try again in a moment.',
   STOCK_EMPTY: 'The stock library found nothing for this brief. Name the subject more plainly in the brief — what would actually be in the photograph.',
   STOCK_ID_INVALID: 'That is not a Shutterstock id. Paste the number from the asset page or the whole page URL.',
@@ -33,9 +35,19 @@ const MESSAGES = Object.freeze({
   NETWORK: 'The builder could not reach its local server. Start it with `npm run dev`.',
 });
 
+/*
+ * Codes whose server message carries a fact this file cannot know — the hour a
+ * spent quota resets, for instance. Everywhere else the map above wins, because
+ * that is the whole point of it: a strategist reads plain language, not whatever
+ * wording the provider happened to use. From 500 up the payload has already
+ * replaced the text anyway.
+ */
+const SERVER_MESSAGE_CODES = new Set(['STOCK_RATE_LIMITED']);
+
 export function normalizeApiError(error) {
   if (error instanceof BriefBrainApiError) {
-    return { code: error.code, message: MESSAGES[error.code] || error.message, status: error.status };
+    const specific = SERVER_MESSAGE_CODES.has(error.code) && error.message ? error.message : '';
+    return { code: error.code, message: specific || MESSAGES[error.code] || error.message, status: error.status };
   }
   // Anything else is a fault in this build, not a network condition. Reporting
   // it as "start the server" sends the user to fix the wrong thing and hides the

@@ -103,16 +103,31 @@ check('Brief Brain returns five unique flow recommendations', () => {
   return { flowIds: recommended.flows.map((flow) => flow.id) };
 });
 
-check('Flow library includes five richer 10+ module journeys and 30 total in-browser flows', () => {
+/*
+ * One catalogue, counted once.
+ *
+ * This check used to read the data file and add the ids it could scrape out of
+ * one runtime injection block — and there were two. It reported 30 flows while
+ * the running product had 35, which is where the "30-flow library" claim came
+ * from. The catalogue is now the data file, the runtime adds nothing, and this
+ * asserts exactly that.
+ */
+check('Flow catalogue is the data file, with five richer 10+ module journeys', () => {
   const richer = catalog.flows.filter((flow) => /^E[1-5]$/.test(flow.id));
   assert.equal(richer.length, 5);
   for (const flow of richer) assert.ok(flow.families.length >= 10, `${flow.id} is too short`);
+  assert.equal(catalog.flows.length, 35);
+  assert.equal(new Set(catalog.flows.map((flow) => flow.id)).size, 35);
+  assert.equal(catalog.skill.flowCount, 35);
   const builderSource = fs.readFileSync(path.join(root, 'src/runtime/builder.js'), 'utf8');
-  const runtimeBlock = builderSource.slice(builderSource.indexOf('var SBS_V3_FLOWS=['), builderSource.indexOf('DATA.flows=DATA.flows.concat', builderSource.indexOf('var SBS_V3_FLOWS=[')));
-  const runtimeIds = [...runtimeBlock.matchAll(/\{id:'([A-Z]\d+)'/g)].map((match) => match[1]);
-  const totalIds = new Set([...catalog.flows.map((flow) => flow.id), ...runtimeIds]);
-  assert.equal(totalIds.size, 30);
-  return { baseCatalogFlows: catalog.flows.length, runtimeFlows: runtimeIds.length, totalBrowserFlows: totalIds.size, richFlows: richer.map((flow) => ({ id: flow.id, modules: flow.families.length })) };
+  for (const injection of ['SBS_EXTRA_FLOWS', 'SBS_V3_FLOWS', 'DATA.flows=DATA.flows.concat', 'DATA.flows.push']) {
+    assert.ok(!builderSource.includes(injection), `the runtime still injects flows via ${injection}`);
+  }
+  return {
+    catalogFlows: catalog.flows.length,
+    runtimeInjectedFlows: 0,
+    richFlows: richer.map((flow) => ({ id: flow.id, modules: flow.families.length })),
+  };
 });
 
 check('Brief Understanding schema accepts five recommendations', () => {
@@ -157,8 +172,10 @@ check('Simple builder renders the same design dial controls and WordPress export
   const simpleStart = builder.indexOf('function v4SimpleBrief()');
   const simpleEnd = builder.indexOf('function v4ModeBadge()', simpleStart);
   const simpleBrief = builder.slice(simpleStart, simpleEnd);
-  assert.ok(simpleBrief.includes("panel('Design dials',v3DialSample(d)+v3DialGroups(d)"));
-  assert.ok(simpleBrief.includes("panel('Quick styles',v3PresetButtons(d)"));
+  // Both are disclosures on this step now, so the panel helper is v4Panel; the
+  // assertion is still that Simple offers the same two controls Advanced does.
+  assert.ok(simpleBrief.includes("v4Panel('Design dials',v3DialSample(d)+v3DialGroups(d)"));
+  assert.ok(simpleBrief.includes("v4Panel('Quick styles',v3PresetButtons(d)"));
   const reviewStart = builder.indexOf('function v4SimpleReview()');
   const reviewEnd = builder.indexOf('function v4BuildConceptExport', reviewStart);
   const review = builder.slice(reviewStart, reviewEnd);
@@ -189,7 +206,7 @@ check('AI Brain prompt explicitly asks for exactly five flows', () => {
 
 const result = {
   passed: assertions.every((entry) => entry.passed),
-  version: '2.2.2',
+  version: '2.5.0',
   assertions,
   summary: {
     passed: assertions.filter((entry) => entry.passed).length,

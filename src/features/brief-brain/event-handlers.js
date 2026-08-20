@@ -1,4 +1,4 @@
-import { SECTION_FAMILY_IDS } from '../../../shared/brief/families.mjs';
+import { SECTION_FAMILY_IDS, sectionFamily } from '../../../shared/brief/families.mjs';
 import { outlineFamilies } from '../../../shared/brief/planner.mjs';
 import { briefBrainApi, normalizeApiError } from './api.js';
 import {
@@ -316,6 +316,18 @@ async function runConcepts(context) {
     next.confidence = result.confidence;
     next.missingFields = result.missingFields || [];
     next.concepts = context.normalizeConcepts(result.concepts);
+    /*
+     * Three concepts are three real workspaces from here on. The builder clones
+     * the concept currently being edited into all three slots — same content,
+     * same flow, same media — then resolves each one's own design, so a client
+     * comparing them compares design decisions and not three different drafts.
+     *
+     * It returns an empty list when the set already exists, because rebuilding
+     * over work already done in V2 or V3 is never something to do silently.
+     */
+    const generatedConcepts = typeof context.generateConcepts === 'function'
+      ? context.generateConcepts(next.concepts)
+      : [];
     next.flows = result.flows || [];
     next.source = result.source;
     next.directives = result.directives || null;
@@ -333,7 +345,9 @@ async function runConcepts(context) {
     if (next.active !== null) context.applyConcept(next.active, { silent: true });
     const message = result.degraded
       ? result.degraded.message
-      : `${next.concepts.length} concepts ready. Pick one to continue.`;
+      : generatedConcepts.length
+        ? `${next.concepts.length} concepts ready. Pick one to continue.`
+        : `${next.concepts.length} concepts re-read. Your existing V1/V2/V3 workspaces were kept — reset a concept to take its new design.`;
     next.liveMessage = message;
     context.queueSave();
     context.renderAll();
@@ -467,6 +481,42 @@ export function handleBriefBrainEvent(event, context = {}) {
     case 'apply-flow':
       context.applyFlow(trigger.dataset.brainFlow);
       return true;
+    /*
+     * Appending rather than toggling.
+     *
+     * A page flow is a sequence and the same family legitimately appears twice — two
+     * card bands, a statement early and another late. Removing on a second click
+     * would make that impossible to express.
+     */
+    case 'toggle-outline-reference':
+      // The browser would also toggle this natively, and the re-render below would
+      // then disagree with it.
+      event.preventDefault();
+      brain.outlineReferenceOpen = brain.outlineReferenceOpen === false;
+      context.queueSave();
+      context.renderAll();
+      return true;
+    case 'insert-section': {
+      const family = sectionFamily(trigger.dataset.brainFamily);
+      if (!family) return true;
+      const lines = String(brain.outline || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      lines.push(family.label);
+      // Renumbered on every insert, so adding a section after a hand edit cannot
+      // leave a broken sequence behind.
+      brain.outline = lines
+        .map((line, index) => `${index + 1}. ${line.replace(/^\s*(?:\d+[.)]|[-*\u2022])\s*/, '')}`)
+        .join('\n');
+      brain.liveMessage = `${family.label} added to the outline.`;
+      context.queueSave();
+      context.renderAll();
+      // The strategist is mid-thought: put the cursor back where they were typing.
+      const textarea = document.getElementById('brain-outline');
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      }
+      return true;
+    }
     case 'apply-content': {
       const draft = brain.contentDraft;
       if (!draft?.sections?.length) return true;

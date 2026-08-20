@@ -23,6 +23,9 @@ const BRAIN_DEFAULTS = Object.freeze({
   error: '',
   errorCode: '',
   liveMessage: '',
+  // The typed-outline section reference starts open: a strategist who has not
+  // written an outline yet is the one who needs to see what is available.
+  outlineReferenceOpen: true,
 });
 
 const BRAIN_STATUSES = new Set(['idle', 'reading', 'writing', 'planning', 'ready', 'error']);

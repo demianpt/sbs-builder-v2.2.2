@@ -485,7 +485,13 @@ export function draftPageContent({ brief: briefInput, families = [] } = {}) {
         buttons: draft.buttons || [],
       };
     });
-  return { source: 'deterministic', sections };
+  const footer = {
+    statement: sentenceCase(goal ? shorten(goal, 90) : (offer ? shorten(offer, 90) : `Work with ${brand}`)),
+    description: [offer ? shorten(offer, 150) : '', audience ? `Written for ${audience.replace(/^for\s+/i, '')}.` : '']
+      .filter(Boolean).join(' ') || 'Add the one sentence a visitor should leave with.',
+    ctaText: action,
+  };
+  return { source: 'deterministic', sections, footer };
 }
 
 /* ------------------------------------------------------------------ *

@@ -133,6 +133,33 @@ export async function createProjectBundle({ navigation, footer, page, websiteHtm
   return new Blob([bytes], { type: 'application/zip' });
 }
 
+/**
+ * The archival bundle: every concept's own four artifacts, in its own folder.
+ *
+ * WordPress imports one concept at a time, so this is not an import format. It
+ * exists for handoff and for the record — the three proposals a client was shown,
+ * each complete, in one file.
+ */
+export async function createConceptSetBundle({ concepts, manifest = null }) {
+  const list = Array.isArray(concepts) ? concepts : [];
+  if (!list.length) throw new TypeError('At least one concept is required.');
+  const files = [];
+  for (const concept of list) {
+    const folder = String(concept?.slot || 'V1').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!concept?.navigation || !concept?.footer || !concept?.page || typeof concept?.websiteHtml !== 'string') {
+      throw new TypeError(`Concept ${folder} is missing an artifact.`);
+    }
+    files.push(
+      { name: `${folder}/navigation.json`, content: serializeJson(concept.navigation) },
+      { name: `${folder}/footer.json`, content: serializeJson(concept.footer) },
+      { name: `${folder}/page.json`, content: serializeJson(concept.page) },
+      { name: `${folder}/website.html`, content: concept.websiteHtml },
+    );
+  }
+  if (manifest) files.unshift({ name: 'concepts.json', content: serializeJson(manifest) });
+  return new Blob([createZip(files)], { type: 'application/zip' });
+}
+
 export function downloadBlob(name, blob) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

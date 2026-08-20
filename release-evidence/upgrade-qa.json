@@ -1,6 +1,6 @@
 {
   "passed": true,
-  "version": "2.2.2",
+  "version": "2.5.0",
   "assertions": [
     {
       "label": "Shutterstock full URL extracts the path asset id, not the tracking id",
@@ -23,15 +23,14 @@
         "E1",
         "E3",
         "E4",
-        "B2"
+        "B10"
       ]
     },
     {
-      "label": "Flow library includes five richer 10+ module journeys and 30 total in-browser flows",
+      "label": "Flow catalogue is the data file, with five richer 10+ module journeys",
       "passed": true,
-      "baseCatalogFlows": 20,
-      "runtimeFlows": 10,
-      "totalBrowserFlows": 30,
+      "catalogFlows": 35,
+      "runtimeInjectedFlows": 0,
       "richFlows": [
         {
           "id": "E1",

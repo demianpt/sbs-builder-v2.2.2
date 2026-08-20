@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { previewSettled } from './support/preview.mjs';
 
 /**
  * The second round of upgrades, held to the behaviour that was asked for:
@@ -46,6 +47,11 @@ async function settledPreview(page) {
   await expect
     .poll(() => preview.evaluate((frame) => Boolean(frame.contentDocument?.querySelector('#sbs-site'))))
     .toBe(true);
+  // `#sbs-site` exists in the outgoing document too, so that poll alone can be
+  // satisfied by a frame about to be replaced — and a rebuild also re-renders
+  // the editor, which detaches any field a test is holding. Under load that is
+  // how a colour typed into a swatch went nowhere.
+  await previewSettled(page);
   return preview;
 }
 
@@ -66,7 +72,7 @@ test.describe('the front door', () => {
     // The choice is written on the autosave debounce, so wait for the record
     // rather than for the click.
     await expect
-      .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('sbs-dst-page-builder-v2') || '{}').builderMode))
+      .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('sbs-builder-v3') || '{}').builderMode))
       .toBe('advanced');
     await page.reload();
     await page.waitForFunction(() => Boolean(window.__SBS_TEST_API));
@@ -264,6 +270,9 @@ test.describe('the global parts', () => {
 
   test('every element of the navigation and the footer takes a colour', async ({ page }) => {
     await enterAdvanced(page);
+    // Settle before touching a field: a pending rebuild re-renders the editor
+    // and the swatch this test is about would be replaced mid-edit.
+    await settledPreview(page);
     for (const path of ['global.header.bgColor', 'global.header.textColor', 'global.header.linkHoverColor',
       'global.header.borderColor', 'global.footer.bgColor', 'global.footer.textColor',
       'global.footer.headingColor', 'global.footer.linkColor', 'global.footer.accentColor']) {

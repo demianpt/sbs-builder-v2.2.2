@@ -127,7 +127,7 @@ test.describe('module editor views', () => {
     await page.locator('[data-editor-tab="layout"]').click();
     await expect(page.locator('[data-module-view="extended"]')).toHaveClass(/active/);
 
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('sbs-dst-page-builder-v2')?.includes('"moduleView":"extended"'))).toBe(true);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('sbs-builder-v3')?.includes('"moduleView":"extended"'))).toBe(true);
     await page.reload();
     await page.waitForFunction(() => Boolean(window.__SBS_TEST_API));
     await page.locator('[data-step="3"]').click();

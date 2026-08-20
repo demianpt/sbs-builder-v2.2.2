@@ -239,3 +239,29 @@
   color:var(--ui-ink);background:#f3f7f4;border-left:2px solid var(--ui-green);
   padding:8px 10px;font-weight:500;
 }
+
+/*
+ * The section reference under the typed outline.
+ *
+ * "The page will have…" over an empty box asks the strategist to guess the
+ * vocabulary. This lists every family the engine can build, with what each is for,
+ * and each one adds itself to the outline.
+ */
+.outline-reference{margin:-4px 0 14px;border:1px solid var(--ui-line,#dcd9d2);background:#fff}
+.outline-reference>summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:9px 11px;cursor:pointer;list-style:none}
+.outline-reference>summary::-webkit-details-marker{display:none}
+.outline-reference>summary::after{content:'';margin-left:auto;width:7px;height:7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);opacity:.5;transition:transform .15s}
+.outline-reference[open]>summary::after{transform:rotate(-135deg)}
+.outline-reference>summary b{font-size:11px}
+.outline-reference>summary small{font:500 8px DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--ui-muted,#6f7175)}
+.outline-reference>.brain-hint{margin:0 11px 9px}
+.outline-sections{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:5px;padding:0 11px 11px}
+.outline-section{text-align:left;border:1px solid var(--ui-line,#dcd9d2);background:#fff;padding:7px 8px;cursor:pointer;transition:border-color .14s,background .14s}
+.outline-section:hover:not(:disabled){border-color:var(--ui-ink,#15181b);background:#faf9f7}
+.outline-section:disabled{opacity:.5;cursor:default}
+.outline-section b{display:block;font-size:10px;margin-bottom:2px}
+.outline-section span{display:block;font-size:9px;line-height:1.35;color:var(--ui-muted,#6f7175)}
+/* Already named in the outline. Still clickable: a flow may repeat a family. */
+.outline-section.is-used{border-color:var(--ui-accent,#B5412B);background:#fdf6f4}
+.outline-section.is-used b::after{content:' · in your outline';font:500 8px DM Mono,monospace;letter-spacing:.06em;color:var(--ui-accent,#B5412B);text-transform:uppercase}
+@media(prefers-reduced-motion:reduce){.outline-section,.outline-reference>summary::after{transition:none}}

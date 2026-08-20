@@ -172,4 +172,25 @@ describe('deterministic page copy', () => {
       for (const button of section.buttons) expect(button).not.toHaveProperty('link');
     }
   });
+
+  // The closing band is the last thing on the page, and it used to keep the
+  // demonstration project's statement after every module had been rewritten.
+  it('writes the footer as well as the sections', () => {
+    expect(draft.footer.statement).toBeTruthy();
+    expect(draft.footer.description).toBeTruthy();
+    expect(draft.footer.ctaText).toBeTruthy();
+    // Assembled from the brief, like every other sentence here.
+    expect(draft.footer.statement.toLowerCase()).toContain('book');
+    expect(draft.footer.description.toLowerCase()).toContain('gentle');
+    // An action, not a URL and not a sign-off.
+    expect(draft.footer.ctaText).toMatch(/^[A-Z][a-z]/);
+    expect(draft.footer.ctaText).not.toContain('http');
+  });
+
+  it('still writes a footer when the brief says almost nothing', () => {
+    const thin = draftPageContent({ brief: { projectName: 'Acme' }, families: ['hero', 'cta'] });
+    expect(thin.footer.statement).toBeTruthy();
+    expect(thin.footer.description).toBeTruthy();
+    expect(thin.footer.ctaText).toBeTruthy();
+  });
 });

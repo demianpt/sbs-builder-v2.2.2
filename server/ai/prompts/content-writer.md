@@ -45,6 +45,22 @@ outside the object.
   a low-commitment read-more. Button text is an action, two to four words. Do
   not write a URL; the builder owns links.
 
+## The footer
+
+The page ends in a global footer, and it is yours to write as well. Return a
+`footer` object with three fields:
+
+- `statement` — the closing line, one short sentence. This is the last thing a
+  visitor reads: make it the page's argument in its shortest form, not a
+  sign-off like "Get in touch".
+- `description` — one supporting sentence under it.
+- `ctaText` — the label on the footer's action, two to four words, an action.
+  Do not write a URL.
+
+The same rules apply: no invented facts, the brief's own vocabulary, the voice
+field. Do not repeat the closing section's heading word for word — the footer
+sits directly beneath it.
+
 ## Coherence
 
 The page is one argument. The hero states the promise, the middle proves it, the
@@ -82,7 +98,12 @@ order, using the exact family strings you were given.
       ],
       "buttons": []
     }
-  ]
+  ],
+  "footer": {
+    "statement": "The page's argument in one short line",
+    "description": "One supporting sentence.",
+    "ctaText": "Book online"
+  }
 }
 ```
 

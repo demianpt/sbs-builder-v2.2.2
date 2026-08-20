@@ -5,13 +5,27 @@
 import { DIALS, DIAL_GROUPS, DIAL_KEYS, DIAL_PRESETS, dialCss, dialDocumentAttributes, dialLabel, dialLevels, dialTokens, ensureDials } from '../../shared/design/dials.mjs';
 import { BUTTON_STYLES, buttonStyle, buttonStyleCss, buttonStylePreviewMarkup, normalizeButtonStyle } from '../../shared/design/button-styles.mjs';
 import { CONCEPT_DESIGN_KEYS, conceptFromDesign, normalizeConceptList, resolveConceptDesign } from '../../shared/design/concepts.mjs';
+import { CONCEPT_IDS, CONCEPT_SLOTS, CONCEPT_VARIANTS, CONCEPT_VARIANT_TYPES, bindProject, conceptHasDraftChanges, conceptIdFrom, conceptIndexOf, conceptIsolationDiff, conceptPublishLabel, duplicateConcept, generateConceptSet, getActiveConcept, getActiveConceptId, getConcept, hasGeneratedConceptSet, listConcepts, listGeneratedConcepts, migrateProject, projectToJson, resetConcept, serializeProject, setActiveConcept, snapshotWorkspace, touchConcept } from '../../shared/concepts/workspace.mjs';
+import { createConceptHistory } from '../../shared/concepts/history.mjs';
+import { STYLE_FAMILIES, allStyles, loadStyleLibrary, productionStyles, styleByKey, styleCounts, styleFamilies, styleFromRef, styleKey, stylesInFamily } from '../../shared/styles/catalog.mjs';
+import { VARIANT_RULES, compilePatternWeight, compileSectionRecipe, compileStyle, styleSummary, variantRule } from '../../shared/styles/compiler.mjs';
 import { PALETTE_ROLES as PALETTE_ROLE_KEYS, contrastRatio as paletteContrast, paletteContrastReport, readableOn, repairPalette } from '../../shared/design/palette.mjs';
+import { SECTION_FAMILIES } from '../../shared/brief/families.mjs';
 import { isPeopleFamily } from '../../shared/brief/media.mjs';
 import { briefDirectives } from '../../shared/brief/planner.mjs';
 import { fontOptions } from '../../shared/design/fonts.mjs';
-import { createProjectBundle, downloadBlob } from '../utils/project-bundle.js';
+import { createConceptSetBundle, createProjectBundle, downloadBlob } from '../utils/project-bundle.js';
 
-export function initializeBuilder(DATA, DST_SHARED_CSS, briefBrainFeature = {}) {
+export function initializeBuilder(DATA, DST_SHARED_CSS, briefBrainFeature = {}, { styleLibrary = null } = {}) {
+/*
+ * The style library.
+ *
+ * Ten families, fifty production style profiles, built from
+ * `style-factory/style-seeds.json` by `npm run styles:build`. A style resolves to
+ * palette, type, radius, a button family, all nine dials, a per-section recipe and
+ * a pattern-preference weighting — which is what stops it being a palette preset.
+ */
+loadStyleLibrary(styleLibrary);
 const STEPS=[
   {title:'Brief',sub:'What this page must do'},
   {title:'Direction',sub:'Archetype and design tokens'},
@@ -38,6 +52,35 @@ const uid=(prefix='id')=>`${prefix}-${Date.now().toString(36)}-${(++uidCounter).
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
 const byId=id=>document.getElementById(id);
 const patternMap=new Map(DATA.patterns.map(p=>[p.id,p]));
+/*
+ * One canonical flow catalogue.
+ *
+ * The catalogue is the data file and nothing else. Two later layers used to push
+ * their own flows onto `DATA.flows` at boot and `v3EnsureCustomFlows` pushed every
+ * loaded project's typed flows on top, so the number of flows in the product
+ * depended on which projects a session had opened and no two places — data,
+ * runtime, tests, README — agreed on the count.
+ *
+ * A flow a strategist types stays on their project. `allFlows` is the only view
+ * that joins the two, and it builds a new array rather than growing the
+ * catalogue.
+ */
+const FLOW_CATALOG=Object.freeze(DATA.flows.map(function(flow){return Object.freeze(flow)}));
+function projectCustomFlows(project){
+  const list=(project||state.project||{}).customFlows;
+  return Array.isArray(list)?list:[];
+}
+/** The catalogue plus the current project's own typed flows. */
+function allFlows(project){
+  const custom=projectCustomFlows(project);
+  return custom.length?FLOW_CATALOG.concat(custom):FLOW_CATALOG;
+}
+function flowById(id,project){
+  const list=allFlows(project);
+  for(let i=0;i<list.length;i+=1)if(list[i].id===id)return list[i];
+  return null;
+}
+function flowExists(id,project){return Boolean(flowById(id,project))}
 const familyPatterns=family=>DATA.patterns.filter(p=>p.family===family);
 const mediaAt=(i=0)=>DATA.media[(i+DATA.media.length)%DATA.media.length]||{src:'',alt:'Placeholder image',source:'skill'};
 const mediaByGroup=(group,fallback=0)=>DATA.media.find(m=>m.group===group)||mediaAt(fallback);
@@ -123,26 +166,162 @@ function patternLabel(section){return patternMap.get(section.patternId)?.title||
 function sectionTitle(section){return section.content?.title||section.content?.pretitle||familyLabels[section.family]||section.family}
 function sectionPreset(family,index=0){const base=SECTION_PRESETS[family]||{container:index%3===0?'wide':'default',paddingTop:'default',paddingBottom:'default',inverted:false,viewport:'fade-up'};return deepClone(base)}
 function createSection(family,index=0,patternId=null){const pattern=patternFor(patternId||DATA.defaultPatternByFamily[family],family);const node=deepClone(pattern.tree);const id=uid(`section-${family}`),preset=sectionPreset(family,index);rekeyTree(node,id);node.pattern=pattern.id;node.role=family;node.usage=FAMILY_USAGE[family]||node.usage||'section';node.patternMeta={family:pattern.family,category:pattern.category,title:pattern.title,look:pattern.look};const section={id,family,patternId:pattern.id,visible:true,node,content:contentFor(family,index),layout:{container:preset.container,paddingTop:preset.paddingTop,paddingBottom:preset.paddingBottom,inverted:!!preset.inverted,background:'auto'},effects:{viewport:preset.viewport||'fade-up',scroll:preset.scroll||'',repeat:false},decoration:preset.decoration||null};syncSectionNode(section);return section}
-function makeProject(){const flow=DATA.flows.find(f=>f.id==='B3')||DATA.flows[0];const sections=flow.families.map((f,i)=>createSection(f,i));return {id:uid('concept'),client:'Vision Continuity',brief:{projectName:'Vision Continuity',clientName:'Vision Continuity',industry:'Federal continuity & defense services',audience:'Federal programme leaders, defense primes and operational decision-makers',goal:'Generate qualified briefing requests while proving readiness expertise',offer:'Continuity programme stand-up, validation, exercises and sustainment',tone:'Calm authority, precise, operational, never theatrical',keywords:'readiness, continuity, decision-ready, exercised, handover',notes:'Demonstration concept. Replace proof points and testimonial content before publishing.'},design:{archetype:'A',styleSource:'archetype',palette:{bg:'#F7F5EF',ink:'#0A2536',accent:'#B5412B',soft:'#DCE4E7',dark:'#071C2A'},fontBody:'Inter',fontDisplay:'Cormorant Garamond',radius:'2px',density:48,expressiveness:63,motion:42,styleDNA:{schemaVersion:'sbs-style-dna/1.0',status:'empty',active:false,model:'kimi-k3:cloud',fallbackArchetype:'A',sources:[],synthesized:null,applied:null,preview:null,preserved:{},overrides:{},errors:[]},themeOverrides:{},componentRecipes:{},generatedCssTokens:{}},flowId:flow.id,header:{variant:'standard',position:'sticky',announcement:'',logoText:'Vision Continuity',nav:[['Who we are','#about'],['Capabilities','#capabilities'],['Approach','#process'],['Resources','#resources']],cta:{text:'Request a briefing',link:'#contact'}},footer:{variant:'editorial',statement:'Readiness is demonstrated, not declared.',description:'Continuity planning, exercises and programme sustainment for high-consequence organizations.',columns:[{title:'Explore',menuLocation:'footer-menu',links:[['Capabilities','#capabilities'],['Approach','#process'],['Resources','#resources']]},{title:'Company',menuLocation:'company-menu',links:[['Who we are','#about'],['Contact','#contact'],['Privacy','#privacy']]}],legal:'Vision Continuity · Demonstration concept'},sections};}
-let saved=null;try{saved=safeJson(localStorage.getItem('sbs-dst-page-builder-v2')||localStorage.getItem('sbs-dst-page-builder-v1'))}catch(e){saved=null}
+function makeProject(){const flow=FLOW_CATALOG.find(f=>f.id==='B3')||FLOW_CATALOG[0];const sections=flow.families.map((f,i)=>createSection(f,i));return {id:uid('concept'),client:'Vision Continuity',brief:{projectName:'Vision Continuity',clientName:'Vision Continuity',industry:'Federal continuity & defense services',audience:'Federal programme leaders, defense primes and operational decision-makers',goal:'Generate qualified briefing requests while proving readiness expertise',offer:'Continuity programme stand-up, validation, exercises and sustainment',tone:'Calm authority, precise, operational, never theatrical',keywords:'readiness, continuity, decision-ready, exercised, handover',notes:'Demonstration concept. Replace proof points and testimonial content before publishing.'},design:{archetype:'A',styleSource:'archetype',palette:{bg:'#F7F5EF',ink:'#0A2536',accent:'#B5412B',soft:'#DCE4E7',dark:'#071C2A'},fontBody:'Inter',fontDisplay:'Cormorant Garamond',radius:'2px',density:48,expressiveness:63,motion:42,styleDNA:{schemaVersion:'sbs-style-dna/1.0',status:'empty',active:false,model:'kimi-k3:cloud',fallbackArchetype:'A',sources:[],synthesized:null,applied:null,preview:null,preserved:{},overrides:{},errors:[]},themeOverrides:{},componentRecipes:{},generatedCssTokens:{}},flowId:flow.id,header:{variant:'standard',position:'sticky',announcement:'',logoText:'Vision Continuity',nav:[['Who we are','#about'],['Capabilities','#capabilities'],['Approach','#process'],['Resources','#resources']],cta:{text:'Request a briefing',link:'#contact'}},footer:{variant:'editorial',statement:'Readiness is demonstrated, not declared.',description:'Continuity planning, exercises and programme sustainment for high-consequence organizations.',columns:[{title:'Explore',menuLocation:'footer-menu',links:[['Capabilities','#capabilities'],['Approach','#process'],['Resources','#resources']]},{title:'Company',menuLocation:'company-menu',links:[['Who we are','#about'],['Contact','#contact'],['Privacy','#privacy']]}],legal:'Vision Continuity · Demonstration concept'},sections};}
+const SBS_STORAGE_KEY='sbs-builder-v3';
+const SBS_LEGACY_STORAGE_KEYS=['sbs-dst-page-builder-v2','sbs-dst-page-builder-v1'];
+const SBS_SESSION_SCHEMA='sbs-builder-session/3.0';
+let saved=null;
+try{
+  saved=safeJson(localStorage.getItem(SBS_STORAGE_KEY));
+  for(var sbsKeyIndex=0;!saved&&sbsKeyIndex<SBS_LEGACY_STORAGE_KEYS.length;sbsKeyIndex++){
+    saved=safeJson(localStorage.getItem(SBS_LEGACY_STORAGE_KEYS[sbsKeyIndex]));
+  }
+}catch(e){saved=null}
+/**
+ * Whether a stored project can be bound at all.
+ *
+ * A 3.0 project keeps its page inside `conceptSet`; a 2.x project keeps it on the
+ * project itself. Either shape is loadable — only one with neither is discarded,
+ * because a project whose page is structurally impossible would throw on the
+ * first render and leave the editor behind a blank screen.
+ */
+function sbsStoredProjectIsUsable(project){
+  if(!project||typeof project!=='object')return false;
+  var set=project.conceptSet;
+  if(set&&set.concepts&&typeof set.concepts==='object'){
+    return CONCEPT_IDS.some(function(id){return set.concepts[id]&&Array.isArray(set.concepts[id].sections)});
+  }
+  return Array.isArray(project.sections);
+}
 // A saved project whose section list is not an array would throw on the first
 // render and leave the editor permanently broken behind a blank screen. An
 // empty array is legitimate — a project can be saved with no modules yet — so
 // only a structurally impossible value is discarded.
-if(saved&&saved.project&&!Array.isArray(saved.project.sections)){
+if(saved&&saved.project&&!sbsStoredProjectIsUsable(saved.project)){
   saved={...saved,project:null};
 }
 let state={project:saved?.project||makeProject(),currentStep:saved?.currentStep||0,selectedSectionId:saved?.selectedSectionId||null,device:saved?.device||'desktop',zoom:saved?.zoom??0,editorTab:'content',patternFilter:'all',dirty:false};
+/*
+ * The project becomes a live view of its active concept workspace.
+ *
+ * `migrateProject` brings a project of any earlier shape up to the concept-set
+ * model and installs accessors for `design`, `sections`, `header`, `footer`,
+ * `flowId`, `page`, `style` and `manualOverrides`. Every one of those resolves
+ * through `conceptSet.activeConceptId` on each read and each write, so the five
+ * thousand lines below this point edit the active concept and nothing else — and
+ * there is no moment at which an edit exists on the project but not yet in a
+ * concept. That is what replaced capture-on-switch.
+ */
+const conceptMigration=migrateProject(state.project,{resolveConceptDesign:sbsLegacyConceptDesign});
+if(saved&&saved.activeConceptId)setActiveConcept(state.project,saved.activeConceptId);
 if(!state.selectedSectionId)state.selectedSectionId=state.project.sections[0]?.id||null;
-let undoStack=[],redoStack=[],saveTimer=null,previewTimer=null,inputHistoryTimer=null;
-function snapshot(){return JSON.stringify(state.project)}
-function restoreSnapshot(raw){const p=safeJson(raw);if(p){state.project=p;if(!state.project.sections.some(s=>s.id===state.selectedSectionId))state.selectedSectionId=state.project.sections[0]?.id||null;renderAll();queueSave()}}
-function checkpoint(){undoStack.push(snapshot());if(undoStack.length>40)undoStack.shift();redoStack=[];updateUndoButtons()}
-function undo(){if(!undoStack.length)return;redoStack.push(snapshot());restoreSnapshot(undoStack.pop());updateUndoButtons();announce('Undid last change')}
-function redo(){if(!redoStack.length)return;undoStack.push(snapshot());restoreSnapshot(redoStack.pop());updateUndoButtons();announce('Redid change')}
-function updateUndoButtons(){byId('undoBtn').disabled=!undoStack.length;byId('redoBtn').disabled=!redoStack.length}
-function queueSave(){state.dirty=true;byId('saveStatus').textContent='Saving…';clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem('sbs-dst-page-builder-v2',JSON.stringify({project:state.project,currentStep:state.currentStep,selectedSectionId:state.selectedSectionId,device:state.device,zoom:state.zoom,moduleView:state.moduleView,builderMode:state.builderMode}))}catch(e){};state.dirty=false;byId('saveStatus').textContent='Saved locally'},420)}
-function mutate(fn,{render=true,history=true,message=''}={}){if(history)checkpoint();fn();state.project.sections.forEach(syncSectionNode);queueSave();if(render)renderAll();else queuePreview();if(message)announce(message)}
+let saveTimer=null,previewTimer=null,inputHistoryTimer=null;
+/** Resolves a 2.2.x concept descriptor against the archetype catalogue. */
+function sbsLegacyConceptDesign(concept,options){
+  return resolveConceptDesign(concept,{
+    archetypeStyle:DATA.archetypeStyles[concept&&concept.archetypeKey],
+    current:(options&&options.current)||{}
+  });
+}
+/**
+ * Undo and redo are per concept.
+ *
+ * Editing V1's headline, switching to V2, editing V2's cards and pressing undo
+ * must undo the card change. A single project-wide stack cannot promise that, so
+ * each concept keeps its own and switching concepts is not an edit.
+ */
+const conceptHistory=createConceptHistory({limit:40,onRestore:function(){sbsAfterConceptRestore()}});
+function sbsAfterConceptRestore(){
+  // The shared slices come back as fresh objects, so the accessor that puts
+  // media placements on the active concept has to be reinstalled.
+  bindProject(state.project);
+  if(!state.project.sections.some(function(s){return s.id===state.selectedSectionId})){
+    state.selectedSectionId=state.project.sections[0]?state.project.sections[0].id:null;
+  }
+  sbsSyncSimpleActive();
+}
+function checkpoint(){conceptHistory.checkpoint(state.project);updateUndoButtons()}
+function undo(){if(!conceptHistory.undo(state.project))return;renderAll();queueSave();updateUndoButtons();announce('Undid last change in '+sbsActiveConceptLabel())}
+function redo(){if(!conceptHistory.redo(state.project))return;renderAll();queueSave();updateUndoButtons();announce('Redid change in '+sbsActiveConceptLabel())}
+function updateUndoButtons(){byId('undoBtn').disabled=!conceptHistory.canUndo(state.project);byId('redoBtn').disabled=!conceptHistory.canRedo(state.project)}
+/** The active concept, named the way a strategist refers to it. */
+function sbsActiveConceptLabel(){
+  var concept=getActiveConcept(state.project);
+  return concept?(concept.slot+' · '+concept.name):'this concept';
+}
+/**
+ * Keeps the simple builder's concept cards pointing at the live concept.
+ *
+ * `simple.concepts` is the record of what the brain proposed; the concept set is
+ * the live workspace. Only the selected index needs to agree between them.
+ */
+function sbsSyncSimpleActive(){
+  var simple=state.project.simple;
+  if(!simple||!Array.isArray(simple.concepts)||!simple.concepts.length)return;
+  var index=conceptIndexOf(getActiveConceptId(state.project));
+  if(index>=0&&index<simple.concepts.length&&simple.active!==null)simple.active=index;
+}
+/**
+ * Autosave.
+ *
+ * `serializeProject` writes the concept set once. The mirrored active-concept
+ * keys are enumerable so existing code keeps working, which also means a plain
+ * `JSON.stringify` would store the live website twice — once inside its concept
+ * and once beside it, with only one of the two having an owner.
+ */
+/**
+ * The save pill.
+ *
+ * 'saving' shows immediately and stays up while the debounce is pending;
+ * 'saved' replaces it and then withdraws, so a run of keystrokes reads as one
+ * continuous save rather than a flicker per character. Hiding is on its own
+ * timer because the pill has to survive the next keystroke arriving.
+ */
+var savePillTimer=null;
+function savePill(phase){
+  var pill=byId('saveStatus');
+  if(!pill)return;
+  clearTimeout(savePillTimer);
+  pill.hidden=false;
+  pill.textContent=phase==='saving'?'Saving':'Saved';
+  pill.classList.toggle('is-saving',phase==='saving');
+  // A frame, so the transition has a start state to move from on first show.
+  requestAnimationFrame(function(){pill.classList.add('is-visible')});
+  if(phase==='saved'){
+    savePillTimer=setTimeout(function(){
+      pill.classList.remove('is-visible');
+      setTimeout(function(){if(!pill.classList.contains('is-visible'))pill.hidden=true},260);
+    },1500);
+  }
+}
+/** The session payload. One shape, written by the debounce and by the flush. */
+function sessionPayload(){return {schemaVersion:SBS_SESSION_SCHEMA,project:serializeProject(state.project),currentStep:state.currentStep,selectedSectionId:state.selectedSectionId,activeConceptId:getActiveConceptId(state.project),device:state.device,zoom:state.zoom,moduleView:state.moduleView,builderMode:state.builderMode}}
+function writeSession(){try{localStorage.setItem(SBS_STORAGE_KEY,JSON.stringify(sessionPayload()))}catch(e){}state.dirty=false}
+function queueSave(){state.dirty=true;savePill('saving');clearTimeout(saveTimer);saveTimer=setTimeout(()=>{writeSession();savePill('saved')},420)}
+/**
+ * Writes a pending save immediately.
+ *
+ * The debounce is 420ms, which is the right interval for a run of keystrokes and
+ * the wrong one for a page that is about to go away: close the tab, reload, or
+ * switch to another app within that window and the last edit was simply lost.
+ * `pagehide` is the event that fires in every case a document is discarded,
+ * including the back/forward cache; `visibilitychange` covers a phone being
+ * locked, where `pagehide` may never come.
+ */
+function flushSave(){
+  if(!state.dirty)return;
+  clearTimeout(saveTimer);
+  saveTimer=null;
+  writeSession();
+}
+window.addEventListener('pagehide',flushSave);
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flushSave()});
+function mutate(fn,{render=true,history=true,message=''}={}){if(history)checkpoint();fn();state.project.sections.forEach(syncSectionNode);
+  // A deep edit — a headline, a pattern swap, a mobile column count — does not
+  // pass through the slice setters, so the revision is stamped here. Publishing
+  // compares it against the revision that was last snapshotted.
+  touchConcept(getActiveConcept(state.project));
+  queueSave();if(render)renderAll();else queuePreview();if(message)announce(message)}
 function ensureParagraph(heading,text){let simple=(heading.children||[]).find(n=>n.component==='ds-blocks/simple-text');if(!simple){simple={id:uid('simple-text'),component:'ds-blocks/simple-text',usage:'rich-text',confidence:'confirmed',attributes:{},children:[]};heading.children=heading.children||[];heading.children.unshift(simple)}let p=(simple.children||[]).find(n=>n.component==='core/paragraph');if(!p){p={id:uid('paragraph'),component:'core/paragraph',usage:'paragraph',confidence:'confirmed',attributes:{},children:[]};simple.children=simple.children||[];simple.children.push(p)}p.attributes.content=text||''}
 function inlineCheckIcon(label='Check'){const svg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>';return {intent:'intent:inline-svg:'+encodeURIComponent(JSON.stringify({svg,label})),caption:label}}
 function inlineQuoteIcon(label='Quotation mark'){const svg='<svg viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg"><path fill="#B5412B" d="M0 24V13.2C0 5.9 4.2 1.1 12 0v4.6C7.6 5.6 5.4 8.2 5.4 12.2H12V24H0Zm20 0V13.2C20 5.9 24.2 1.1 32 0v4.6c-4.4 1-6.6 3.6-6.6 7.6H32V24H20Z"/></svg>';return {intent:'intent:inline-svg:'+encodeURIComponent(JSON.stringify({svg,label})),caption:label}}
@@ -260,7 +439,7 @@ function rangeOptionsFrom(input){
   };
 }
 
-function panel(title,body,meta=''){return `<section class="panel"><div class="panel-head"><h2>${title}</h2>${meta?`<small>${meta}</small>`:''}</div><div class="panel-body">${body}</div></section>`}
+function panel(title,body,meta='',attrs=''){return `<section class="panel"${attrs?' '+attrs:''}><div class="panel-head"><h2>${title}</h2>${meta?`<small>${meta}</small>`:''}</div><div class="panel-body">${body}</div></section>`}
 function pageHead(kicker,title,description,badge=''){return `<div class="page-head"><div class="eyebrow">${esc(kicker)}</div><div class="page-head-row"><div><h1>${title}</h1><p>${description}</p></div>${badge?`<span class="badge">${esc(badge)}</span>`:''}</div></div>`}
 function renderStepNav(){byId('stepNav').innerHTML=STEPS.map((s,i)=>`<li><button class="step-btn ${i===state.currentStep?'active':''} ${i<state.currentStep?'done':''}" data-step="${i}"><span class="step-num">${i<state.currentStep?'✓':i+1}</span><span class="step-copy"><b>${esc(s.title)}</b><span>${esc(s.sub)}</span></span><span class="step-state"></span></button></li>`).join('')}
 function renderEditorNav(){return `<div class="editor-nav"><button class="nav-btn" data-nav="prev" ${state.currentStep===0?'disabled':''}>← Previous</button><span class="nav-hint">Step ${state.currentStep+1} of ${STEPS.length}</span><button class="nav-btn next" data-nav="next">${state.currentStep===STEPS.length-1?'Back to brief':'Continue →'}</button></div>`}
@@ -272,7 +451,7 @@ function renderDirection(){const d=state.project.design;const arch=DATA.archetyp
  panel('Palette and type',`<div class="panel-note">The five colors become semantic DST tokens: body, text, accent, supporting surface and inverted ground.</div><div class="palette-row">${[['bg','Canvas'],['ink','Ink'],['accent','Accent'],['soft','Soft'],['dark','Dark']].map(([k,l])=>`<label class="color-field"><input type="color" data-bind="design.palette.${k}" value="${escAttr(d.palette[k])}"><span>${l}</span></label>`).join('')}</div><div class="field-grid" style="margin-top:16px">${field('Body typeface','design.fontBody',d.fontBody,{type:'select',options:fonts})}${field('Display typeface','design.fontDisplay',d.fontDisplay,{type:'select',options:fonts})}${field('Corner language','design.radius',d.radius,{type:'select',full:true,options:[{value:'0px',label:'Square / editorial'},{value:'2px',label:'Almost square'},{value:'8px',label:'Soft utility'},{value:'16px',label:'Friendly rounded'},{value:'28px',label:'Expressive rounded'}]})}</div>`)+
  panel('Design dials',`<div class="range-row">${[['density','Density'],['expressiveness','Expression'],['motion','Motion']].map(([k,l])=>`<div class="range-field"><label>${l}<output>${d[k]}</output></label><input type="range" min="0" max="100" value="${d[k]}" data-bind="design.${k}"></div>`).join('')}</div>`)+renderEditorNav()}
 function moduleRows(){return state.project.sections.map((s,i)=>`<div class="module-row ${s.id===state.selectedSectionId?'selected':''}" draggable="true" data-section-id="${s.id}"><span class="drag" title="Drag to reorder">${ICONS.grip}</span><span class="module-index">${String(i+1).padStart(2,'0')}</span><span class="module-copy"><b>${esc(familyLabels[s.family]||s.family)} · ${esc(sectionTitle(s))}</b><span>${esc(patternLabel(s))}</span></span><span class="module-actions"><button class="mini-btn" data-action="duplicate" data-id="${s.id}" title="Duplicate">${ICONS.copy}</button><button class="mini-btn danger" data-action="remove" data-id="${s.id}" title="Remove">${ICONS.trash}</button></span></div>`).join('')}
-function renderFlow(){const flow=DATA.flows.find(f=>f.id===state.project.flowId)||DATA.flows[0];const flows=DATA.flows.map(f=>`<button class="flow-card ${f.id===state.project.flowId?'selected':''}" data-flow="${f.id}"><div class="flow-top"><span class="flow-id">${f.id}</span><b>${esc(f.name)}</b></div><p>${esc(f.tagline)}. ${esc(f.bestFor)}</p><div class="flow-family">${f.families.map(x=>`<span>${esc(x)}</span>`).join('')}</div></button>`).join('');return pageHead('03 · Page flow','Choose the argument, then shape the sequence.','Named SBS flows prevent the habitual “hero + cards + logo strip” solution. Select a structure, then reorder or replace any module.',`${flow.id} · ${flow.name}`)+
+function renderFlow(){const flow=flowById(state.project.flowId)||FLOW_CATALOG[0];const flows=allFlows().map(f=>`<button class="flow-card ${f.id===state.project.flowId?'selected':''}" data-flow="${f.id}"><div class="flow-top"><span class="flow-id">${f.id}</span><b>${esc(f.name)}</b></div><p>${esc(f.tagline)}. ${esc(f.bestFor)}</p><div class="flow-family">${f.families.map(x=>`<span>${esc(x)}</span>`).join('')}</div></button>`).join('');return pageHead('03 · Page flow','Choose the argument, then shape the sequence.','Named SBS flows prevent the habitual “hero + cards + logo strip” solution. Select a structure, then reorder or replace any module.',`${flow.id} · ${flow.name}`)+
  panel('SBS flow library',`<div class="choice-grid">${flows}</div>`,'15 flows')+
  panel('Current page sequence',`<div class="panel-note"><b>${esc(flow.tagline)}</b><br>${esc(flow.rhythm)}</div><div id="moduleList" class="module-list">${moduleRows()}</div><button class="add-row" data-action="add-module" style="width:100%;margin-top:8px">+ Add a DST module</button>`,'Drag to reorder')+renderEditorNav()}
 function repeatRows(section,items,type){if(!items?.length)return '<div class="empty-state"><b>No items yet</b><p>Add the first item for this module.</p></div>';if(type==='stats')return items.map((x,i)=>`<div class="repeat-row"><input data-item="${i}" data-key="value" value="${escAttr(x.value||'')}" placeholder="Value"><input data-item="${i}" data-key="label" value="${escAttr(x.label||x.title||'')}" placeholder="Label"><button class="mini-btn danger" data-remove-item="${i}">${ICONS.trash}</button></div><div class="repeat-row wide" style="margin-top:-3px"><input data-item="${i}" data-key="description" value="${escAttr(x.description||x.text||'')}" placeholder="Supporting description"><span></span></div>`).join('');if(type==='pricing')return items.map((x,i)=>`<div style="border:1px solid #e4e1da;padding:9px;margin-bottom:7px"><div class="repeat-row"><input data-item="${i}" data-key="title" value="${escAttr(x.title||'')}" placeholder="Plan"><input data-item="${i}" data-key="price" value="${escAttr(x.price||'')}" placeholder="Price / label"><button class="mini-btn danger" data-remove-item="${i}">${ICONS.trash}</button></div><div class="repeat-row wide" style="margin-top:6px"><input data-item="${i}" data-key="text" value="${escAttr(x.text||'')}" placeholder="Plan description"><span></span></div><div class="field-help" style="margin-top:6px">Features: ${esc((x.features||[]).join(' · '))}</div></div>`).join('');return items.map((x,i)=>`<div class="repeat-row"><input data-item="${i}" data-key="title" value="${escAttr(x.title||x.label||'')}" placeholder="Title"><input data-item="${i}" data-key="text" value="${escAttr(x.text||x.description||x.body||'')}" placeholder="Description"><button class="mini-btn danger" data-remove-item="${i}" title="Remove">${ICONS.trash}</button></div>`).join('')}
@@ -322,7 +501,25 @@ function queuePreview(){clearTimeout(previewTimer);previewTimer=setTimeout(rende
 function renderPreview(){try{byId('sitePreview').srcdoc=buildSiteDocument(state.project)}catch(e){console.error(e);byId('sitePreview').srcdoc=`<pre style="padding:20px;font:14px monospace">Preview error: ${esc(e.message)}</pre>`}}
 function goStep(i){state.currentStep=clamp(i,0,STEPS.length-1);queueSave();renderStepNav();renderEditor();document.querySelector('.editor').scrollTop=0}
 function applyArchetype(key){const style=DATA.archetypeStyles[key];if(!style)return;mutate(()=>{state.project.design.archetype=key;state.project.design.palette={bg:style.bg,ink:style.ink,accent:style.accent,soft:style.soft,dark:style.dark};state.project.design.fontBody=style.fontBody;state.project.design.fontDisplay=style.fontDisplay;state.project.design.radius=style.radius},{message:`Applied archetype ${key} · ${DATA.archetypes[key]?.name||''}`})}
-function applyFlow(id){const flow=DATA.flows.find(f=>f.id===id);if(!flow)return;mutate(()=>{const pool={};state.project.sections.forEach(s=>(pool[s.family]||(pool[s.family]=[])).push(s));state.project.sections=flow.families.map((family,i)=>{const existing=pool[family]?.shift();if(existing)return existing;return createSection(family,i)});state.project.flowId=id;state.selectedSectionId=state.project.sections[0]?.id||null},{message:`Applied ${flow.id} · ${flow.name}`})}
+/** Rebuilds the active concept's page from a flow, reusing modules where it can. */
+function applyFlowToActiveConcept(flow){
+  const pool={};
+  state.project.sections.forEach(s=>(pool[s.family]||(pool[s.family]=[])).push(s));
+  state.project.sections=flow.families.map((family,i)=>{
+    const existing=pool[family]?.shift();
+    if(existing)return existing;
+    return createSection(family,i);
+  });
+  state.project.flowId=flow.id;
+  state.selectedSectionId=state.project.sections[0]?.id||null;
+}
+
+/** Applies a page flow to the concept being edited. Extended below. */
+function applyFlow(id){
+  const flow=flowById(id);
+  if(!flow)return;
+  mutate(()=>applyFlowToActiveConcept(flow),{message:`Applied ${flow.id} · ${flow.name}`});
+}
 function duplicateSection(id){const index=state.project.sections.findIndex(s=>s.id===id);if(index<0)return;mutate(()=>{const copy=deepClone(state.project.sections[index]);copy.id=uid(`section-${copy.family}`);rekeyTree(copy.node,copy.id);copy.content.title=(copy.content.title||familyLabels[copy.family])+' — alternate';state.project.sections.splice(index+1,0,copy);state.selectedSectionId=copy.id},{message:'Module duplicated'})}
 function removeSection(id){const index=state.project.sections.findIndex(s=>s.id===id);if(index<0)return;mutate(()=>{state.project.sections.splice(index,1);state.selectedSectionId=state.project.sections[Math.min(index,state.project.sections.length-1)]?.id||null},{message:'Module removed'})}
 function switchPattern(section,pattern){const old=section.content||{};const fresh=contentFor(pattern.family,0);for(const key of ['pretitle','title','subtitle','body','buttons','media'])if(old[key]!=null)fresh[key]=deepClone(old[key]);section.family=pattern.family;section.patternId=pattern.id;section.node=deepClone(pattern.tree);section.fidelity=null;rekeyTree(section.node,section.id);section.content={...fresh,...Object.fromEntries(Object.entries(old).filter(([k])=>k in fresh))};section.node.pattern=pattern.id;section.node.role=pattern.family;section.node.patternMeta={family:pattern.family,category:pattern.category,title:pattern.title,look:pattern.look};syncSectionNode(section)}
@@ -330,7 +527,12 @@ let patternModalContext='change';
 function openPatternModal(mode='change'){patternModalContext=mode;const select=byId('patternFamily');const families=[...new Set(DATA.patterns.map(p=>p.family))].sort();select.innerHTML='<option value="all">All families</option>'+families.map(f=>`<option value="${escAttr(f)}">${esc(familyLabels[f]||f)} (${familyPatterns(f).length})</option>`).join('');const s=state.project.sections.find(x=>x.id===state.selectedSectionId);select.value=mode==='change'&&s?s.family:'all';byId('patternSearch').value='';byId('patternModal').classList.add('open');renderPatternGrid();setTimeout(()=>byId('patternSearch').focus(),50)}
 function closePatternModal(){byId('patternModal').classList.remove('open')}
 function renderPatternGrid(){const query=byId('patternSearch').value.trim().toLowerCase(),family=byId('patternFamily').value,sort=byId('patternSort').value;const current=state.project.sections.find(x=>x.id===state.selectedSectionId);let rows=DATA.patterns.filter(p=>(family==='all'||p.family===family)&&(!query||[p.title,p.family,p.category,p.look,p.id].join(' ').toLowerCase().includes(query)));if(sort==='title')rows.sort((a,b)=>a.title.localeCompare(b.title));else if(sort==='family')rows.sort((a,b)=>(a.family+a.title).localeCompare(b.family+b.title));else rows.sort((a,b)=>Number(b.family===current?.family)-Number(a.family===current?.family)||a.title.localeCompare(b.title));byId('modalPatternCount').textContent=rows.length;byId('patternGrid').innerHTML=rows.map(p=>`<button class="pattern-card ${p.id===current?.patternId?'selected':''}" data-pattern-id="${p.id}"><div class="pattern-visual ${p.family}"><span class="pv-copy"><i></i><i></i><i></i></span><span class="pv-media"></span></div><div class="pattern-card-body"><b>${esc(p.title)}</b><span>${esc(p.family)} · ${esc(p.category||'pattern')}</span><p>${esc(p.look||'Registered DST pattern')}</p></div></button>`).join('')||'<div class="empty-state choice-wide"><b>No matching patterns</b><p>Clear the search or choose another family.</p></div>'}
-function choosePattern(id){const p=patternMap.get(id);if(!p)return;if(patternModalContext==='add'){mutate(()=>{const s=createSection(p.family,state.project.sections.length,p.id);state.project.sections.push(s);state.selectedSectionId=s.id;state.editorTab='content'},{message:`Added ${p.title}`})}else{const s=state.project.sections.find(x=>x.id===state.selectedSectionId);if(s)mutate(()=>switchPattern(s,p),{message:`Changed to ${p.title}`})}closePatternModal()}
+/*
+ * A pattern chosen by hand is locked against later style re-selection. Without
+ * this, picking a style after choosing a pattern would silently undo the choice —
+ * and an explicit selection is the one input that always wins.
+ */
+function choosePattern(id){const p=patternMap.get(id);if(!p)return;if(patternModalContext==='add'){mutate(()=>{const s=createSection(p.family,state.project.sections.length,p.id);state.project.sections.push(s);state.selectedSectionId=s.id;state.editorTab='content'},{message:`Added ${p.title}`})}else{const s=state.project.sections.find(x=>x.id===state.selectedSectionId);if(s)mutate(()=>{switchPattern(s,p);s.patternLocked=true},{message:`Changed to ${p.title}`})}closePatternModal()}
 function bindDragRows(){let dragged=null;document.querySelectorAll('.module-row[draggable="true"]').forEach(row=>{row.addEventListener('dragstart',e=>{dragged=row.dataset.sectionId;e.dataTransfer.effectAllowed='move';row.style.opacity='.45'});row.addEventListener('dragend',()=>{row.style.opacity='';dragged=null});row.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='move'});row.addEventListener('drop',e=>{e.preventDefault();const target=row.dataset.sectionId;if(!dragged||dragged===target)return;checkpoint();const arr=state.project.sections,from=arr.findIndex(x=>x.id===dragged),to=arr.findIndex(x=>x.id===target);const [item]=arr.splice(from,1);arr.splice(to,0,item);queueSave();renderAll();announce('Module reordered')})})}
 function currentSection(){return state.project.sections.find(x=>x.id===state.selectedSectionId)}
 function inputCheckpoint(){if(!inputHistoryTimer)checkpoint();clearTimeout(inputHistoryTimer);inputHistoryTimer=setTimeout(()=>{inputHistoryTimer=null},850)}
@@ -409,8 +611,8 @@ function effectAttrs(section){const e=section.effects||{};const parts=[];if(e.vi
 function renderSection(section,index,project){ensureSectionSettings(section);syncSectionNode(section);const ctx={section,sectionIndex:index,project,family:section.family,top:true,topHeading:true,h1Used:false,nestedHeading:false};if(['ds-blocks/dst-wrapper','ds-blocks/dst-banner'].includes(section.node.component))return renderNode(section.node,ctx);return `<section id="${escAttr(section.id)}" class="dst-wrapper c-full ${sectionClasses(section)} ${sectionBgClass(section,index)}" ${effectAttrs(section)}>${renderDecoration(section)}<div class="dst-wrapper__inner ${containerClass(section.layout?.container||'default')}">${renderNode(section.node,{...ctx,top:false})}</div></section>`}
 function renderHeader(project){const h=project.header,b=project.brief;return `<header class="site-header is-sticky has-glass"><div class="site-header__row c-default"><a class="site-header__logo" href="#top"><span class="sbs-logo-mark">VC</span><span>${esc(h.logoText||b.clientName)}</span></a><button class="sbs-menu-toggle" aria-expanded="false" aria-label="Open navigation"><span></span><span></span><span></span></button><nav class="nav-menu">${(h.nav||[]).map(([label,url])=>`<a href="${escAttr(normalizeLink(url))}">${esc(label)}</a>`).join('')}</nav><a class="c-btn -primary -small sbs-header-cta" href="${escAttr(normalizeLink(h.cta?.link||'#contact'))}">${esc(h.cta?.text||'Contact')}</a></div></header>`}
 function renderFooter(project){const f=project.footer,b=project.brief;return `<footer class="site-footer is-style-colors-inverted sbs-footer"><div class="c-default"><div class="footer__top sbs-footer-statement"><span class="c-heading__pre">${esc(b.clientName)}</span><h2 class="footer__nl-head">${rich(f.statement)}</h2><p class="footer__nl-sub">${rich(f.description)}</p><a class="c-btn -primary-inverted" href="#contact">Start a conversation <span aria-hidden="true">↗</span></a></div><div class="footer__divider"></div><div class="footer__cols"><div class="footer__col"><div class="site-header__logo sbs-footer-logo"><span class="sbs-logo-mark">VC</span><span>${esc(b.clientName)}</span></div><p>${rich(b.offer)}</p><div class="dst-socials"><a class="dst-social" href="#" aria-label="LinkedIn">in</a><a class="dst-social" href="#" aria-label="Email">@</a></div></div>${(f.columns||[]).map(col=>`<div class="footer__col"><h4>${esc(col.title)}</h4><ul class="footer__menu">${(col.links||[]).map(([l,u])=>`<li><a href="${escAttr(normalizeLink(u))}">${esc(l)}</a></li>`).join('')}</ul></div>`).join('')}</div><div class="footer__bottom"><div class="footer__legal">${esc(f.legal)}</div><ul class="footer__privacy"><li><a href="#privacy">Privacy</a></li><li><a href="#accessibility">Accessibility</a></li></ul></div></div><div class="footer__wordmark is-bottom" aria-hidden="true">${esc(b.clientName.split(' ')[0]||'SBS')}</div></footer>`}
-function siteCss(project){const d=project.design,p=d.palette,vg=(6.8+(d.density/100)*4.2).toFixed(2),h1=(5.8+(d.expressiveness/100)*2.5).toFixed(2),motion=(.55+(d.motion/100)*.55).toFixed(2);return `
-html{scroll-behavior:smooth;background:${p.bg}}body{margin:0;background:${p.bg};overflow-x:clip}#sbs-site.ver{display:block;min-height:100vh;--dst--primary-color1:${p.dark};--dst--primary-color2:${p.accent};--dst--primary-color3:${p.ink};--dst--secondary-color1:#fff;--dst--secondary-color2:${p.bg};--dst--secondary-color3:${p.soft};--dst--secondary-color4:${p.accent};--dst--secondary-color5:${p.soft};--dst--secondary-color6:${p.accent};--dst--secondary-color7:#fff;--dst--secondary-color8:${p.accent};--dst--body-bg:${p.bg};--dst--body-bg-alt:${p.dark};--dst--base-text-color:${p.ink};--dst--base-text-color-alt:#f7f5ef;--dst--base-heading-color:${p.ink};--dst--base-heading-color-alt:#fff;--dst--base-link-color:${p.accent};--dst--base-link-color-alt:#f7f5ef;--dst--border-color:${p.soft};--dst--border-color-alt:rgba(255,255,255,.18);--dst--pretitle-color:${p.accent};--dst--pretitle-color-alt:#fff;--dst--subtitle-color:${p.ink};--dst--subtitle-color-alt:rgba(255,255,255,.78);--dst--font-primary:'${d.fontBody}',system-ui,sans-serif;--dst--font-secondary:'${d.fontDisplay}',Georgia,serif;--dst--fs-h1:clamp(4.2rem,${h1}vw,10.2rem);--dst--fs-h2:clamp(3.2rem,4.4vw,7rem);--dst--fs-h3:clamp(2.2rem,2.2vw,3.6rem);--dst--fs-h4:clamp(1.8rem,1.5vw,2.4rem);--dst--fs-pretitle:clamp(1.1rem,.4vw + 1rem,1.4rem);--dst--fs-subtitle:clamp(1.8rem,.5vw + 1.55rem,2.2rem);--dst--fs-base:clamp(1.6rem,.15vw + 1.55rem,1.8rem);--dst--fs-lg:clamp(1.9rem,.3vw + 1.7rem,2.3rem);--dst--base-lh:1.65;--dst--default-radius:${d.radius};--dst--default-container-width:1440px;--dst--wide-container-width:1780px;--dst--alt-container-width:1060px;--dst--desktop-vertical-gap:${vg}vmin;--dst--vgap-s:5.2vmin;--dst--vgap-l:13vmin;--dst--header-height:84px;--dst--btn-ff:var(--dst--font-primary);--dst--btn-br:${d.radius};--dst--btn-p:1.55rem 2.7rem;--dst--btn-fs:1.5rem;--dst--btn-fw:650;--dst--btn-primary-c:#fff;--dst--btn-primary-bg:${p.accent};--dst--btn-primary-bdc:${p.accent};--dst--btn-primary-c-hover:#fff;--dst--btn-primary-bg-hover:${p.dark};--dst--btn-secondary-c:${p.ink};--dst--btn-secondary-bg:transparent;--dst--btn-secondary-bdc:${p.ink};--dst--btn-secondary-c-hover:#fff;--dst--btn-secondary-bg-hover:${p.ink};--dst--btn-secondary-inverted-c:#fff;--dst--btn-secondary-inverted-bdc:rgba(255,255,255,.65);--dst--btn-secondary-inverted-bg-hover:#fff;--dst--btn-secondary-inverted-c-hover:${p.dark};--dst--btn-primary-inverted-c:${p.dark};--dst--btn-primary-inverted-bg:#fff;--dst--btn-primary-inverted-bg-hover:${p.accent};--dst--btn-primary-inverted-c-hover:#fff;font-family:var(--dst--font-primary);font-size:var(--dst--fs-base);color:var(--dst--base-text-color);background:var(--dst--body-bg)}
+function siteCss(project){const d=project.design,p=d.palette,onAccent=readableOn(p.accent,['#ffffff',p.ink,p.dark]),onInk=readableOn(p.ink,['#ffffff',p.bg,p.soft]),onDark=readableOn(p.dark,['#ffffff',p.bg,p.soft]),vg=(6.8+(d.density/100)*4.2).toFixed(2),h1=(5.8+(d.expressiveness/100)*2.5).toFixed(2),motion=(.55+(d.motion/100)*.55).toFixed(2);return `
+html{scroll-behavior:smooth;background:${p.bg}}body{margin:0;background:${p.bg};overflow-x:clip}#sbs-site.ver{display:block;min-height:100vh;--dst--primary-color1:${p.dark};--dst--primary-color2:${p.accent};--dst--primary-color3:${p.ink};--dst--secondary-color1:#fff;--dst--secondary-color2:${p.bg};--dst--secondary-color3:${p.soft};--dst--secondary-color4:${p.accent};--dst--secondary-color5:${p.soft};--dst--secondary-color6:${p.accent};--dst--secondary-color7:#fff;--dst--secondary-color8:${p.accent};--dst--body-bg:${p.bg};--dst--body-bg-alt:${p.dark};--dst--base-text-color:${p.ink};--dst--base-text-color-alt:#f7f5ef;--dst--base-heading-color:${p.ink};--dst--base-heading-color-alt:#fff;--dst--base-link-color:${p.accent};--dst--base-link-color-alt:#f7f5ef;--dst--border-color:${p.soft};--dst--border-color-alt:rgba(255,255,255,.18);--dst--pretitle-color:${p.accent};--dst--pretitle-color-alt:#fff;--dst--subtitle-color:${p.ink};--dst--subtitle-color-alt:rgba(255,255,255,.78);--dst--font-primary:'${d.fontBody}',system-ui,sans-serif;--dst--font-secondary:'${d.fontDisplay}',Georgia,serif;--dst--fs-h1:clamp(4.2rem,${h1}vw,10.2rem);--dst--fs-h2:clamp(3.2rem,4.4vw,7rem);--dst--fs-h3:clamp(2.2rem,2.2vw,3.6rem);--dst--fs-h4:clamp(1.8rem,1.5vw,2.4rem);--dst--fs-pretitle:clamp(1.1rem,.4vw + 1rem,1.4rem);--dst--fs-subtitle:clamp(1.8rem,.5vw + 1.55rem,2.2rem);--dst--fs-base:clamp(1.6rem,.15vw + 1.55rem,1.8rem);--dst--fs-lg:clamp(1.9rem,.3vw + 1.7rem,2.3rem);--dst--base-lh:1.65;--dst--default-radius:${d.radius};--dst--default-container-width:1440px;--dst--wide-container-width:1780px;--dst--alt-container-width:1060px;--dst--desktop-vertical-gap:${vg}vmin;--dst--vgap-s:5.2vmin;--dst--vgap-l:13vmin;--dst--header-height:84px;--sbs-on-accent:${onAccent};--sbs-on-ink:${onInk};--sbs-on-dark:${onDark};--dst--btn-ff:var(--dst--font-primary);--dst--btn-br:${d.radius};--dst--btn-p:1.55rem 2.7rem;--dst--btn-fs:1.5rem;--dst--btn-fw:650;--dst--btn-primary-c:${onAccent};--dst--btn-primary-bg:${p.accent};--dst--btn-primary-bdc:${p.accent};--dst--btn-primary-c-hover:${onDark};--dst--btn-primary-bg-hover:${p.dark};--dst--btn-secondary-c:${p.ink};--dst--btn-secondary-bg:transparent;--dst--btn-secondary-bdc:${p.ink};--dst--btn-secondary-c-hover:${onInk};--dst--btn-secondary-bg-hover:${p.ink};--dst--btn-secondary-inverted-c:#fff;--dst--btn-secondary-inverted-bdc:rgba(255,255,255,.65);--dst--btn-secondary-inverted-bg-hover:#fff;--dst--btn-secondary-inverted-c-hover:${p.dark};--dst--btn-primary-inverted-c:${p.dark};--dst--btn-primary-inverted-bg:#fff;--dst--btn-primary-inverted-bg-hover:${p.accent};--dst--btn-primary-inverted-c-hover:${onAccent};font-family:var(--dst--font-primary);font-size:var(--dst--fs-base);color:var(--dst--base-text-color);background:var(--dst--body-bg)}
 #sbs-site *{box-sizing:border-box}#sbs-site a{transition:color .2s ease,background-color .2s ease,border-color .2s ease,transform .2s ease}#sbs-site h1,#sbs-site h2,#sbs-site h3,#sbs-site h4{font-weight:600}#sbs-site .c-heading__title{letter-spacing:-.035em;text-wrap:balance}#sbs-site .c-heading__sub{opacity:.83}#sbs-site .c-heading__pre{font-family:var(--dst--font-primary);font-weight:700;letter-spacing:.18em}#sbs-site .c-heading__description{gap:2.3rem}#sbs-site .sbs-rich-text{max-width:66ch}#sbs-site .sbs-rich-text p{font-size:var(--dst--fs-lg);line-height:1.62;margin:0;color:inherit;opacity:.88}#sbs-site .c-heading.text-center .sbs-rich-text{margin-inline:auto}#sbs-site .c-heading.text-center .sbs-rich-text p{margin-inline:auto}
 .site-header{background:color-mix(in srgb,${p.bg} 90%,transparent);border-bottom:1px solid color-mix(in srgb,${p.ink} 11%,transparent);transition:background .25s,box-shadow .25s}.site-header.is-stuck{background:color-mix(in srgb,${p.bg} 97%,transparent);box-shadow:0 8px 30px rgba(7,28,42,.07)}.site-header__row{min-height:84px;padding-block:1.2rem}.site-header__logo{display:inline-flex;align-items:center;gap:1rem;text-decoration:none;font-family:var(--dst--font-primary);font-size:1.65rem;letter-spacing:-.01em}.sbs-logo-mark{width:3.8rem;height:3.8rem;display:grid;place-items:center;background:${p.dark};color:#fff;font-size:1.05rem;letter-spacing:.06em;font-weight:800}.nav-menu{gap:3rem}.nav-menu a{font-size:1.45rem;font-weight:600}.sbs-header-cta{margin-left:1rem}.sbs-menu-toggle{display:none;width:4.2rem;height:4.2rem;border:0;background:transparent;margin-left:auto;padding:1rem}.sbs-menu-toggle span{display:block;width:100%;height:1px;background:currentColor;margin:.7rem 0}
 .sbs-band-paper{background:${p.bg}}.sbs-band-soft{background:color-mix(in srgb,${p.soft} 58%,${p.bg})}.sbs-band-tint{background:color-mix(in srgb,${p.accent} 5%,${p.bg})}.sbs-band-dark{background:${p.dark}}.dst-wrapper{position:relative}.dst-wrapper__content,.dst-wrapper__inner{position:relative;z-index:1}.dst-wrapper.c-full>.dst-wrapper__content>.dst-wrapper__inner{width:100%}.dst-wrapper>.c-decoration{z-index:0}.c-decoration{overflow:hidden}.dst-deco--cover{inset:0}.dst-deco--top,.dst-deco--bottom{height:24rem}.dst-deco--center{width:55vmin;height:55vmin}.dst-deco--top-left,.dst-deco--top-right,.dst-deco--bottom-left,.dst-deco--bottom-right{width:min(34rem,32vw);height:min(34rem,32vw)}
@@ -429,7 +631,7 @@ html{scroll-behavior:smooth;background:${p.bg}}body{margin:0;background:${p.bg};
 .sbs-footer{background:${p.dark};overflow:hidden;position:relative}.sbs-footer>.c-default{position:relative;z-index:2}.sbs-footer-statement{display:block;max-width:105rem;padding-bottom:clamp(5rem,8vw,11rem)}.sbs-footer-statement .footer__nl-head{font-family:var(--dst--font-secondary);font-size:clamp(4rem,7vw,10rem);line-height:.97;letter-spacing:-.045em;max-width:12ch}.sbs-footer-statement .footer__nl-sub{max-width:55ch;font-size:1.8rem;margin:2rem 0 3rem}.footer__divider{height:1px;background:rgba(255,255,255,.17);margin-bottom:5rem}.sbs-footer .footer__cols{grid-template-columns:1.5fr 1fr 1fr}.sbs-footer-logo{color:#fff;margin-bottom:2rem}.sbs-footer .footer__col p{max-width:35ch}.sbs-footer .footer__bottom{padding-top:4rem;border-top:1px solid rgba(255,255,255,.17)}.sbs-footer .footer__wordmark{color:rgba(255,255,255,.035);font-family:var(--dst--font-secondary)}
 [data-viewport]{transition-duration:${motion}s}.has-inview-a [data-viewport-effect].in-view>*{opacity:1;transform:none}.has-inview-a [data-viewport-effect="animate-headings"].in-view .c-heading__title{transition-delay:.12s}
 @media(max-width:1100px){.nav-menu{gap:1.7rem}.sbs-hero .c-bg{width:64%}.sbs-hero .dst-banner__inner{max-width:62vw}.dst-content2__block{gap:4rem}.sbs-feature-media{min-height:38rem}.sbs-hacc{min-height:48rem}}
-@media(max-width:900px){.site-header__row{min-height:70px}.sbs-menu-toggle{display:block}.nav-menu{display:none;position:absolute;left:0;right:0;top:100%;background:${p.bg};padding:2rem 2.4rem 3rem;border-bottom:1px solid color-mix(in srgb,${p.ink} 12%,transparent);flex-direction:column;align-items:flex-start}.site-header.menu-open .nav-menu{display:flex}.sbs-header-cta{display:none}.sbs-hero{min-height:auto}.sbs-hero .c-bg{inset:0;width:100%;opacity:.24}.sbs-hero .c-overlay{background:linear-gradient(180deg,${p.dark} 0%,color-mix(in srgb,${p.dark} 84%,transparent) 65%,${p.dark} 100%)}.sbs-hero .dst-banner__inner{max-width:100%}.sbs-hero .dst-banner__container{padding-top:10rem;padding-bottom:13rem}.sbs-hero .c-heading__title{max-width:13ch}.dst-content2__block,.dst-content2__block.sbs-flip{flex-direction:column}.dst-content2__col.sbs-copy-col,.dst-content2__col.sbs-media-col{flex:1 1 auto;width:100%}.sbs-feature-media{min-height:0}.sbs-tab-panel .ds-row{grid-template-columns:1fr!important}.sbs-hacc{display:block;min-height:0}.sbs-hacc-item{display:block;flex:none;border-right:0;border-bottom:1px solid color-mix(in srgb,${p.ink} 15%,transparent)}.sbs-hacc-item>button{width:100%;height:auto;flex-direction:row;padding:1.8rem 2rem}.sbs-hacc-item>button b{writing-mode:horizontal-tb;transform:none}.sbs-hacc-panel{display:none;min-width:0;padding:2rem;grid-template-columns:1fr}.sbs-hacc-item.is-active .sbs-hacc-panel{display:grid}.sbs-footer .footer__cols{grid-template-columns:1fr 1fr}.dst-cards__grid.dst-slider>*{flex-basis:78%}}
+@media(max-width:900px){.site-header__row{min-height:70px}#sbs-site .site-header.header-stacked .site-header__row{display:flex;grid-template-areas:none}#sbs-site .site-header.header-floating{padding:0}#sbs-site .site-header.header-floating .site-header__row{border:0;border-radius:0;box-shadow:none;background:transparent;padding-inline:2rem}.sbs-footer.footer-columns>.c-default{display:block}.sbs-menu-toggle{display:block}.nav-menu{display:none;position:absolute;left:0;right:0;top:100%;background:${p.bg};padding:2rem 2.4rem 3rem;border-bottom:1px solid color-mix(in srgb,${p.ink} 12%,transparent);flex-direction:column;align-items:flex-start}.site-header.menu-open .nav-menu{display:flex}.sbs-header-cta{display:none}.sbs-hero{min-height:auto}.sbs-hero .c-bg{inset:0;width:100%;opacity:.24}.sbs-hero .c-overlay{background:linear-gradient(180deg,${p.dark} 0%,color-mix(in srgb,${p.dark} 84%,transparent) 65%,${p.dark} 100%)}.sbs-hero .dst-banner__inner{max-width:100%}.sbs-hero .dst-banner__container{padding-top:10rem;padding-bottom:13rem}.sbs-hero .c-heading__title{max-width:13ch}.dst-content2__block,.dst-content2__block.sbs-flip{flex-direction:column}.dst-content2__col.sbs-copy-col,.dst-content2__col.sbs-media-col{flex:1 1 auto;width:100%}.sbs-feature-media{min-height:0}.sbs-tab-panel .ds-row{grid-template-columns:1fr!important}.sbs-hacc{display:block;min-height:0}.sbs-hacc-item{display:block;flex:none;border-right:0;border-bottom:1px solid color-mix(in srgb,${p.ink} 15%,transparent)}.sbs-hacc-item>button{width:100%;height:auto;flex-direction:row;padding:1.8rem 2rem}.sbs-hacc-item>button b{writing-mode:horizontal-tb;transform:none}.sbs-hacc-panel{display:none;min-width:0;padding:2rem;grid-template-columns:1fr}.sbs-hacc-item.is-active .sbs-hacc-panel{display:grid}.sbs-footer .footer__cols{grid-template-columns:1fr 1fr}.dst-cards__grid.dst-slider>*{flex-basis:78%}}
 @media(max-width:680px){.c-default,.c-alt,.c-wide,.container{padding-inline:2rem}.dt,.dt-l{padding-top:6.4rem}.db,.db-l{padding-bottom:6.4rem}.site-header__row{padding-inline:1.8rem}.sbs-logo-mark{width:3.4rem;height:3.4rem}.sbs-hero .dst-banner__container,.sbs-cta .dst-banner__container{padding-inline:2rem}.sbs-hero .c-heading__title{font-size:clamp(4.2rem,15vw,7rem)}.dst-button-group{flex-direction:column;align-items:stretch}.dst-button-group .c-btn{width:100%}.dst-list[data-counter] .dst-list__grid{grid-template-columns:1fr 1fr!important}.dst-list[data-counter] .dst-list__item{padding-right:1rem}.sbs-stat-value{font-size:4.5rem}.sbs-tabs .dst-tabs__navbar{overflow-x:auto;flex-wrap:nowrap;justify-content:flex-start}.sbs-tab-button{white-space:nowrap}.sbs-quote-card{padding-inline:0}.sbs-quote-card blockquote{font-size:3rem}.sbs-footer .footer__cols{grid-template-columns:1fr}.sbs-footer-statement .footer__nl-head{font-size:5rem}.footer__privacy{width:100%}.dst-cards__grid.dst-slider>*{flex-basis:88%}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}#sbs-site *,#sbs-site *:before,#sbs-site *:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.has-inview-a [data-viewport-effect]>*,.has-inview-a [data-scroll]>*{opacity:1!important;transform:none!important;visibility:visible!important;clip-path:none!important}}
 `}
@@ -515,7 +717,7 @@ function relativeLum(hex){return hexRgb(hex).map(v=>{v/=255;return v<=.03928?v/1
 function headerExport(project){const h=project.header;return {id:'site-header',component:'ds-blocks/dst-navigation',usage:'header',role:'header',confidence:'confirmed',importerShorthand:true,note:'Concept-level DST navigation shorthand for the importer to expand into the production navigation block family.',layout:{container:'default',background:{kind:'slot',slot:'body-bg'}},attributes:{displayType:h.position||'sticky',dsContainerAlign:'center'},linkTypography:{ref:'theme.elements.navigation.mainLink'},nav:{logo:{text:h.logoText||project.brief.clientName},menu:(h.nav||[]).map(([label,url])=>({label,url:normalizeLink(url)})),cta:{label:h.cta?.text||'Contact',url:normalizeLink(h.cta?.link||'#contact'),btnType:'primary'}},children:[]}}
 function footerExport(project){const f=project.footer;return {id:'site-footer',component:'ds-blocks/dst-wrapper',usage:'footer',role:'footer',confidence:'confirmed',inverted:true,importerShorthand:true,note:'Three-band DST footer shorthand. The importer expands this into the project template part.',layout:{padding:{top:'default',bottom:'default'},container:'full',background:{kind:'slot',slot:'body-bg-alt'},fullWidthWrapper:true},attributes:{fullWidthWrapper:true,backgroundColor:'var(--dst--body-bg-alt)'},footer:{variant:'footer-v1',top:{heading:f.statement,subheading:f.description},columns:[{kind:'brand',logo:true,socialsTitle:'Connect',body:project.brief.offer},...(f.columns||[]).map(c=>({kind:'menu',heading:c.title,menuLocation:c.menuLocation||'footer-menu',links:(c.links||[]).map(([label,url])=>({label,url:normalizeLink(url)}))}))],columnWidths:['1.6fr','1fr','1fr'],columnsTablet:2,columnsMobile:1,bottom:{copyright:f.legal,privacyMenu:{menuLocation:'privacy-menu',links:[{label:'Privacy Policy',url:'#privacy'},{label:'Accessibility',url:'#accessibility'}]}},headingTypography:{tag:'div',preset:'h4-style',fontFamily:'var(--dst--font-primary)',textTransform:'uppercase',letterSpacing:'.08em',fontSize:'1.4rem',fontWeight:700},iconColor:'var(--dst--primary-color2)',legalColor:'var(--dst--base-text-color-alt)',dividerColor:'rgba(255,255,255,.18)'},children:[{id:'footer-socials',component:'ds-blocks/dst-social-networks',usage:'socials',confidence:'confirmed',attributes:{socialSource:'custom',layoutDirection:'horizontal',alignDesktop:'flex-start',socialNetworks:[{id:'linkedin',network:'linkedin',label:'LinkedIn',url:'#'},{id:'email',network:'email',label:'Email',url:'#contact'}],showCaptions:false,socialIconGap:'1.2rem'}}],decorations:[{kind:'motif',motif:'tick-scale',color:'secondary-color1',position:'right',opacity:.1,scale:.9,rationale:'A measured edge rail reinforces the continuity and readiness brief without becoming a generic texture.'}]}}
 function buildTheme(project){const d=project.design,p=d.palette,darkGround=relativeLum(p.bg)<.42,inverseTitle=darkGround?(relativeLum(p.dark)<.3?p.dark:'#080A0E'):'#FFFFFF',altGround=darkGround?'#F7F7F3':p.dark;return {theme:`builder-${d.archetype.toLowerCase()}`,colors:{'primary-color1':p.ink,'primary-color2':p.accent,'primary-color3':p.dark,'secondary-color1':inverseTitle,'secondary-color2':p.bg,'secondary-color3':p.soft,'secondary-color4':p.accent,'secondary-color5':p.soft,'secondary-color6':p.accent,'secondary-color7':darkGround?altGround:'#FFFFFF','secondary-color8':p.accent,'body-bg':'secondary-color2','body-bg-alt':darkGround?'secondary-color7':'primary-color3','base-text-color':'primary-color1','base-text-color-alt':'secondary-color1','base-heading-color':'primary-color1','base-heading-color-alt':'secondary-color1','base-link-color':'primary-color2','base-link-color-alt':'secondary-color1','border-color':'secondary-color5','border-color-alt':'rgba(255,255,255,0.28)','pretitle-color':'primary-color2','pretitle-color-alt':'secondary-color1','subtitle-color':'primary-color1','subtitle-color-alt':'secondary-color1','backtitle-color-alt':'rgba(255,255,255,0.08)','counter-color':'primary-color2','counter-color-alt':'secondary-color1'},layout:{'default-radius':d.radius,'default-radius-mobile':d.radius,'default-container-width':'1440px','alt-container-width':'1060px','desktop-vertical-gap':`${(6.8+(d.density/100)*4.2).toFixed(2)}vmin`,'mobile-vertical-gap':'48px','desktop-gutter':'2.4rem','header-height':'84px','header-height-mobile':'70px'},backgrounds:{'grad-1':`linear-gradient(135deg, ${altGround}, ${p.ink})`,'grad-2':`linear-gradient(135deg, ${p.accent}, ${altGround})`},typography:{fonts:{primary:{family:d.fontBody,google:true,fallback:'system-ui, sans-serif'},secondary:{family:d.fontDisplay,google:true,fallback:'Georgia, serif'}},headings:{h1:{min:'42px',max:'10.2rem',ff:'secondary',fw:600,lh:'0.98',ls:'-0.035em',tt:'none',mb:'0.35em'},h2:{min:'32px',max:'7rem',ff:'secondary',fw:600,lh:'1.02',ls:'-0.03em',tt:'none',mb:'0.4em'},h3:{min:'22px',max:'3.6rem',ff:'secondary',fw:600,lh:'1.12',tt:'none',mb:'0.5em'},h4:{min:'18px',max:'2.4rem',ff:'primary',fw:600,lh:'1.25',tt:'none',mb:'0.5em'},pretitle:{min:'11px',max:'1.4rem',ff:'primary',fw:600,lh:'1.2',ls:'0.18em',tt:'uppercase',mb:'0.9em',color:'pretitle-color'},subtitle:{min:'18px',max:'2.2rem',ff:'primary',fw:400,lh:'1.55',tt:'none',color:'base-text-color'},backtitle:{min:'60px',max:'14rem',ff:'secondary',fw:600,tt:'none',color:'secondary-color2'}},body:{base:{ff:'primary',fw:400,lh:'1.65',ls:'0'},scale:{sm:{min:'14px',max:'1.5rem'},base:{min:'16px',max:'1.8rem'},lg:{min:'19px',max:'2.3rem'}},presets:[]}},elements:{navigation:{mainLink:{ff:'primary',fs:'1.6rem',fw:600,tt:'none',ls:'0',color:'primary-color1',colorHover:'primary-color2'},mobileLink:{ff:'primary',fs:'2rem',fw:600,color:'primary-color1'}},buttons:{shared:{ff:'primary',fs:'1.5rem',fw:650,tt:'none',ls:'0',radius:d.radius,padding:'1.55rem 2.7rem',gap:'.9em',iconSize:'1.4rem'},sizes:{small:{fs:'1.4rem',padding:'1.1rem 2rem'},large:{fs:'1.8rem',padding:'1.8rem 3.4rem'}},primary:{c:'secondary-color1',bg:'primary-color1',bdc:'primary-color1',bdw:'0',cHover:'secondary-color1',bgHover:'primary-color3',bdcHover:'primary-color3'},primaryInverted:{c:'primary-color1',bg:'secondary-color1',bdc:'secondary-color1',bdw:'0',cHover:'secondary-color1',bgHover:'primary-color2',bdcHover:'primary-color2'},secondary:{c:'primary-color1',bg:'transparent',bdc:'primary-color1',bdw:'1px',cHover:'secondary-color1',bgHover:'primary-color1',bdcHover:'primary-color1'},secondaryInverted:{c:'secondary-color1',bg:'transparent',bdc:'secondary-color1',bdw:'1px',cHover:'primary-color1',bgHover:'secondary-color1',bdcHover:'secondary-color1'},link:{c:'primary-color1',cHover:'primary-color2',iconColor:'primary-color1'},icon:{enabled:true,linkEnabled:true,icon:'lib-icon-arrow2',position:'row-reverse'}},forms:{label:{fs:'1.4rem',fw:600,tt:'none',color:'primary-color1'},input:{borderWidth:'1px',borderRadius:d.radius,paddingBlock:'1.2rem',paddingInline:'1.6rem',fs:'1.6rem',fw:400,height:'',color:'primary-color1',placeholderColor:'primary-color1',borderColor:'secondary-color5'},message:{fs:'1.4rem',lh:'1.5',fw:400},validation:{error:'#B94135',success:'#26775A',notice:'primary-color1'}},testimonials:{quote:{ff:'secondary',fs:'4rem',lh:'1.18',fw:600,tt:'none',color:'primary-color1'},authorName:{ff:'primary',fs:'1.6rem',fw:700,color:'primary-color1'},authorPosition:{ff:'primary',fs:'1.4rem',fw:400,color:'primary-color1'},avatarSize:'5.4rem',avatarRadius:'999px',quoteIcon:inlineQuoteIcon('Quotation mark'),quoteIconSize:'5rem'},socials:{size:'4rem',gap:'1rem',radius:d.radius,inner:'1.8rem',borderWidth:'1px',borderColor:'secondary-color1',bg:'transparent',color:'secondary-color1',bgHover:'primary-color2',colorHover:'secondary-color1',borderHoverColor:'primary-color2'},sliders:{nav:{size:'5rem',iconSize:'1.6rem',radius:'999px',gap:'1rem',borderWidth:'1px',bg:'transparent',iconColor:'primary-color1',borderColor:'secondary-color5',bgHover:'primary-color1',iconHoverColor:'secondary-color1',borderHoverColor:'primary-color1'},pagination:{progressbarSize:'.4rem',progressbarFillSize:'',color:'primary-color1',progressbarBg:'secondary-color5',currentFs:'1.6rem',currentFw:700,totalFs:'1.6rem',totalFw:400,bulletSize:'1rem',bulletGap:'.6rem',bulletRadius:'999px',bulletInactiveColor:'secondary-color5'}},wysiwyg:{listIconWidth:'2rem',listIconPosition:'.4rem'}},motion:{customEffects:{}}}}
-function buildExport(project){project.sections.forEach(syncSectionNode);const arch=DATA.archetypes[project.design.archetype]||{},p=project.design.palette;const sections=[headerExport(project),...project.sections.filter(s=>s.visible!==false).map(normalizeExportSection),footerExport(project)];return {$schemaComment:'DST concept export generated by the SBS Page Builder using the attached dst-concept-to-json-patterns skill.',$provenanceNote:'All module trees preserve registered DST components and original SBS pattern provenance. Real media references include source and alt metadata.',schemaVersion:'dst-concept-export/1.0',catalogVersion:DATA.skill.catalogVersion||'4.0-three-source (merged)',generatedFrom:'dst-concept-to-json',client:{name:project.brief.clientName||project.client,slug:slugify(project.brief.clientName||project.client),sourceUrl:'',primaryObjective:project.brief.goal,primaryKeyword:(project.brief.keywords||'').split(',')[0]?.trim()||'',brandPaletteCaptured:[{role:'body canvas',hex:p.bg},{role:'ink and headings',hex:p.ink},{role:'brand accent',hex:p.accent},{role:'supporting surface',hex:p.soft},{role:'inverted ground',hex:p.dark}]},concept:{id:slugify(project.id),name:`${project.brief.projectName} — ${DATA.archetypes[project.design.archetype]?.name||'Custom concept'}`,archetype:`${project.design.archetype} — ${DATA.archetypes[project.design.archetype]?.name||'Custom'}`,polarity:arch.polarity||'light',isActivePreview:true,theme:buildTheme(project),page:{title:project.brief.projectName,slug:slugify(project.brief.projectName),flow:{id:project.flowId,name:DATA.flows.find(f=>f.id===project.flowId)?.name||'Custom',rationale:DATA.flows.find(f=>f.id===project.flowId)?.tagline||'Custom sequence'},sections}},__status:{builder:'SBS DST Page Builder',skill:DATA.skill.name,patternsAvailable:DATA.skill.patternCount,generatedAt:new Date().toISOString(),validation:validateProject()}}}
+function buildExport(project){project.sections.forEach(syncSectionNode);const arch=DATA.archetypes[project.design.archetype]||{},p=project.design.palette;const sections=[headerExport(project),...project.sections.filter(s=>s.visible!==false).map(normalizeExportSection),footerExport(project)];return {$schemaComment:'DST concept export generated by the SBS Page Builder using the attached dst-concept-to-json-patterns skill.',$provenanceNote:'All module trees preserve registered DST components and original SBS pattern provenance. Real media references include source and alt metadata.',schemaVersion:'dst-concept-export/1.0',catalogVersion:DATA.skill.catalogVersion||'4.0-three-source (merged)',generatedFrom:'dst-concept-to-json',client:{name:project.brief.clientName||project.client,slug:slugify(project.brief.clientName||project.client),sourceUrl:'',primaryObjective:project.brief.goal,primaryKeyword:(project.brief.keywords||'').split(',')[0]?.trim()||'',brandPaletteCaptured:[{role:'body canvas',hex:p.bg},{role:'ink and headings',hex:p.ink},{role:'brand accent',hex:p.accent},{role:'supporting surface',hex:p.soft},{role:'inverted ground',hex:p.dark}]},concept:{id:slugify(project.id),name:`${project.brief.projectName} — ${DATA.archetypes[project.design.archetype]?.name||'Custom concept'}`,archetype:`${project.design.archetype} — ${DATA.archetypes[project.design.archetype]?.name||'Custom'}`,polarity:arch.polarity||'light',isActivePreview:true,theme:buildTheme(project),page:{title:project.brief.projectName,slug:slugify(project.brief.projectName),flow:{id:project.flowId,name:flowById(project.flowId,project)?.name||'Custom',rationale:flowById(project.flowId,project)?.tagline||'Custom sequence'},sections}},__status:{builder:'SBS DST Page Builder',skill:DATA.skill.name,patternsAvailable:DATA.skill.patternCount,generatedAt:new Date().toISOString(),validation:validateProject()}}}
 async function handleExport(type){const slug=slugify(state.project.brief.projectName);if(type==='json'){downloadFile(`${slug}-dst-concept.json`,JSON.stringify(buildExport(state.project),null,2),'application/json');announce('WordPress importer JSON downloaded')}else if(type==='html'){downloadFile(`${slug}-website.html`,buildSiteDocument(state.project),'text/html');announce('Standalone website HTML downloaded')}else if(type==='copy'){const text=JSON.stringify(buildExport(state.project),null,2);try{await navigator.clipboard.writeText(text);announce('Project JSON copied')}catch(e){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();announce('Project JSON copied')}}}
 
 state.project.sections.forEach(s=>{ensureSectionSettings(s);syncSectionNode(s)});
@@ -525,16 +727,7 @@ setTimeout(updateDevice,100);
 (function(){
 'use strict';
 
-var SBS_BUILDER_VERSION='2.2.2';
-var SBS_EXTRA_FLOWS=[
-  {id:'B5',name:'Case Study Spine',tagline:'Challenge, response, result, next step',bestFor:'Consultancies and services with a strong proof story.',families:['hero','text','split','stats','testimonial','cta'],rhythm:'Proof appears after the response, then the CTA closes the story.'},
-  {id:'B6',name:'Local Service Sprint',tagline:'Need, service area, proof, booking',bestFor:'Local services, clinics, and appointment-led businesses.',families:['hero','cards','logo','faq','contact'],rhythm:'One clear booking path is repeated after trust-building.'},
-  {id:'B7',name:'Product Launch',tagline:'Promise, product detail, proof, action',bestFor:'New products, software, and capability launches.',families:['hero','split','cards','tabs','testimonial','cta'],rhythm:'The action appears after product proof and again at the close.'},
-  {id:'B8',name:'Mission & Impact',tagline:'Purpose, programme, evidence, invitation',bestFor:'Nonprofits, public-interest teams, and mission-led organisations.',families:['hero','text','stats','timeline','team','cta'],rhythm:'Evidence makes the invitation credible before the closing band.'},
-  {id:'B9',name:'Event Registration',tagline:'The moment, agenda, speakers, registration',bestFor:'Conferences, workshops, webinars, and live launches.',families:['hero','text','timeline','team','faq','contact'],rhythm:'Registration appears in the hero and immediately after the agenda.'}
-];
-var beforeAfterFlow=DATA.flows.find(function(flow){return flow.id==='B3'});
-DATA.flows=(beforeAfterFlow?[beforeAfterFlow]:[]).concat(DATA.flows.filter(function(flow){return flow.id!=='B3'}),SBS_EXTRA_FLOWS);
+var SBS_BUILDER_VERSION='2.5.0';
 var legacySiteCssV1=siteCss;
 var legacyApplyArchetypeV1=applyArchetype;
 var legacyValidateProjectV1=validateProject;
@@ -559,25 +752,68 @@ function v2Bool(value){return value===true||value==='true'||value===1||value==='
  * reads. Adding a fifth means adding it here and nowhere else.
  * ---------------------------------------------------------------- */
 var MOBILE_MENU_STYLES=[
-  {value:'center',label:'Full screen · centred',note:'The original. Links stacked and centred on the canvas colour.'},
-  {value:'left',label:'Full screen · left aligned',note:'Links flush left with running numbers, like a contents page.'},
-  {value:'right',label:'Full screen · right aligned',note:'Links flush right against the edge, weighted like a masthead.'},
-  {value:'aurora',label:'Full screen · aurora (expressive)',note:'A tinted gradient field, oversized type, a circular reveal from the toggle and links that fill on touch.'}
+  {value:'center',short:'Centred',label:'Full screen · centred',note:'The original. Links stacked and centred on the canvas colour.'},
+  {value:'left',short:'Left',label:'Full screen · left aligned',note:'Links flush left with running numbers, like a contents page.'},
+  {value:'right',short:'Right',label:'Full screen · right aligned',note:'Links flush right against the edge, weighted like a masthead.'},
+  {value:'aurora',short:'Aurora',label:'Full screen · aurora (expressive)',note:'A tinted gradient field, oversized type, a circular reveal from the toggle and links that fill on touch.'}
 ];
+var HEADER_VARIANTS=[
+  {value:'standard',label:'Standard · logo left',note:'Logo left, links and the action right. The default for a reason.'},
+  {value:'centered',label:'Centred logo',note:'Logo in the middle, links left, the action right.'},
+  {value:'stacked',label:'Stacked · logo over links',note:'Logo centred on its own line with the menu centred beneath it. Reads as a masthead.'},
+  {value:'floating',label:'Floating bar',note:'The bar is inset from the page edges and reads as a rounded panel rather than a full-width band.'},
+  {value:'minimal',label:'Minimal · burger only',note:'A compact bar with no desktop links: everything is behind the menu button.'}
+];
+var HEADER_VARIANT_DEFAULT='standard';
+function headerVariant(value){
+  var raw=cleanText(value);
+  return HEADER_VARIANTS.some(function(entry){return entry.value===raw})?raw:HEADER_VARIANT_DEFAULT;
+}
+var FOOTER_VARIANTS=[
+  {value:'editorial',label:'Editorial statement',note:'A full-width closing statement above the menu columns.'},
+  {value:'compact',label:'Compact utility',note:'Statement and action on one line, so the columns start higher.'},
+  {value:'centered',label:'Centred closing',note:'Statement, columns and the legal line all centred.'},
+  {value:'columns',label:'Statement beside the menus',note:'The statement moves to the left and the menu columns sit next to it.'},
+  {value:'minimal',label:'Minimal sign-off',note:'One line of brand, the menus and the legal row. No large statement, no wordmark.'}
+];
+var FOOTER_VARIANT_DEFAULT='editorial';
+function footerVariant(value){
+  var raw=cleanText(value);
+  return FOOTER_VARIANTS.some(function(entry){return entry.value===raw})?raw:FOOTER_VARIANT_DEFAULT;
+}
 var MOBILE_MENU_DEFAULT='center';
 function mobileMenuStyle(value){
   var raw=cleanText(value);
   return MOBILE_MENU_STYLES.some(function(style){return style.value===raw})?raw:MOBILE_MENU_DEFAULT;
 }
+/**
+ * Fills missing defaults into an existing object without replacing it.
+ *
+ * Replacing `project.header` would write through to the active concept and stamp
+ * a revision, so a render would look like an edit. It also churns object identity
+ * on every pass, which is what detached a pending write in the brain slice.
+ */
+function v5FillDefaults(target,defaults){
+  Object.keys(defaults).forEach(function(key){
+    if(target[key]===undefined)target[key]=defaults[key];
+  });
+  return target;
+}
+/** The concept-owned slice objects, created only when genuinely absent. */
+function v5EnsureSlice(project,key,factory){
+  var value=project[key];
+  if(!value||typeof value!=='object'){value=factory();project[key]=value}
+  return value;
+}
 function v2EnsureProject(project){
   project.brief=project.brief||{};
   if(project.brief.clientNameCustom==null)project.brief.clientNameCustom=false;
-  project.design=project.design||{};
+  v5EnsureSlice(project,'design',function(){return {}});
   project.design.density=Number.isFinite(Number(project.design.density))?Number(project.design.density):50;
   project.design.expressiveness=Number.isFinite(Number(project.design.expressiveness))?Number(project.design.expressiveness):50;
   project.design.motion=Number.isFinite(Number(project.design.motion))?Number(project.design.motion):35;
   var brand=cleanText(project.brief.clientName||project.brief.projectName||project.client||'Untitled brand');
-  project.header={
+  v5FillDefaults(v5EnsureSlice(project,'header',function(){return {}}),{
     variant:'standard',position:'sticky',frostedGlass:true,hideOnScrollDown:false,container:'default',
     // How the burger's full-screen takeover is composed. The header layout above
     // is a desktop decision and says nothing about the phone, which is where
@@ -590,9 +826,8 @@ function v2EnsureProject(project){
     // restyles the whole page rather than leaving the chrome stranded.
     bgColor:'',bgOpacity:90,textColor:'',linkHoverColor:'',borderColor:'',
     nav:[['Who we are','#about'],['Capabilities','#capabilities'],['Approach','#process'],['Resources','#resources']],
-    cta:{text:'Request a briefing',link:'#contact'},
-    ...(project.header||{})
-  };
+    cta:{text:'Request a briefing',link:'#contact'}
+  });
   if(!Array.isArray(project.header.nav))project.header.nav=[];
   project.header.nav=project.header.nav.map(function(item){
     if(Array.isArray(item))return [String(item[0]||''),String(item[1]||'#')];
@@ -600,10 +835,11 @@ function v2EnsureProject(project){
   });
   project.header.cta={text:'Contact',link:'#contact',...(project.header.cta||{})};
   project.header.mobileMenu=mobileMenuStyle(project.header.mobileMenu);
+  project.header.variant=headerVariant(project.header.variant);
   // The slider writes a string; the CSS needs a number it can trust.
   var headerOpacity=Number(project.header.bgOpacity);
   project.header.bgOpacity=Number.isFinite(headerOpacity)?clamp(headerOpacity,0,100):90;
-  project.footer={
+  v5FillDefaults(v5EnsureSlice(project,'footer',function(){return {}}),{
     variant:'editorial',logoText:brand,logoMark:v2Initials(brand),logoUrl:'',logoTextCustom:false,logoMarkCustom:false,
     logoAlt:'',logoDescription:'',
     bgColor:'',textColor:'',headingColor:'',linkColor:'',accentColor:'',
@@ -616,9 +852,9 @@ function v2EnsureProject(project){
     ],
     socials:[{network:'linkedin',label:'LinkedIn',url:'#'},{network:'email',label:'Email',url:'#contact'}],
     privacyLinks:[['Privacy','#privacy'],['Accessibility','#accessibility']],
-    legal:brand+' · Demonstration concept',legalCustom:false,wordmark:brand.split(' ')[0]||brand,
-    ...(project.footer||{})
-  };
+    legal:brand+' · Demonstration concept',legalCustom:false,wordmark:brand.split(' ')[0]||brand
+  });
+  project.footer.variant=footerVariant(project.footer.variant);
   project.footer.cta={text:'Start a conversation',link:'#contact',...(project.footer.cta||{})};
   if(!Array.isArray(project.footer.columns))project.footer.columns=[];
   project.footer.columns=project.footer.columns.map(function(col,i){
@@ -683,6 +919,12 @@ function v7RangeField(label,path,value,help){
     (help?'<div class="field-help">'+esc(help)+'</div>':'')+'</div>';
 }
 
+/** The note for whichever entry of a variant catalogue is currently chosen. */
+function v2VariantHelp(catalog,value){
+  var match=catalog.filter(function(entry){return entry.value===cleanText(value)})[0]||catalog[0];
+  return match?match.note:'';
+}
+
 /** What the chosen mobile menu actually does, under the select that chose it. */
 function v2MobileMenuHelp(value){
   var chosen=mobileMenuStyle(value),style=MOBILE_MENU_STYLES.filter(function(entry){return entry.value===chosen})[0];
@@ -698,7 +940,7 @@ function v2GlobalEditors(){
     field('Logo image URL','global.header.logoUrl',h.logoUrl||'',{full:true,help:'Optional. When supplied, the image is the whole identity — the initials mark and the wordmark beside it are dropped, because the file already carries the name.'})+
     field('Logo alt text','global.header.logoAlt',h.logoAlt||'',{help:'What a screen reader reads instead of the image. Defaults to the logo / site title.'})+
     field('Logo description','global.header.logoDescription',h.logoDescription||'',{help:'Optional longer description, shown as the tooltip.'})+
-    field('Header layout','global.header.variant',h.variant,{type:'select',options:[{value:'standard',label:'Standard · logo left'},{value:'centered',label:'Centered logo'},{value:'minimal',label:'Minimal / compact'}]})+
+    field('Header layout','global.header.variant',headerVariant(h.variant),{type:'select',full:true,options:HEADER_VARIANTS.map(function(entry){return {value:entry.value,label:entry.label}}),help:v2VariantHelp(HEADER_VARIANTS,h.variant)+' Hover the navigation in the preview to step through the five with the arrows.'})+
     field('Mobile menu style','global.header.mobileMenu',mobileMenuStyle(h.mobileMenu),{type:'select',full:true,options:MOBILE_MENU_STYLES.map(function(style){return {value:style.value,label:style.label}}),help:v2MobileMenuHelp(h.mobileMenu)})+
     field('Header behavior','global.header.position',h.position,{type:'select',options:[{value:'static',label:'Static'},{value:'sticky',label:'Sticky'},{value:'fixed',label:'Fixed'}]})+
     field('Frosted glass','global.header.frostedGlass',String(!!h.frostedGlass),{type:'select',options:[{value:'false',label:'Off'},{value:'true',label:'On'}]})+
@@ -713,9 +955,9 @@ function v2GlobalEditors(){
     v7ColorField('Link hover','global.header.linkHoverColor',h.linkHoverColor,p.accent)+
     v7ColorField('Bottom border','global.header.borderColor',h.borderColor,p.soft)+
     '</div>'+
-    '<div class="global-section-title"><b>Navigation items</b><button class="text-btn" data-global-action="reset-brand">Use client name for logo</button></div>'+v2NavRows(h),'Global part');
+    '<div class="global-section-title"><b>Navigation items</b><button class="text-btn" data-global-action="reset-brand">Use client name for logo</button></div>'+v2NavRows(h),'Global part','data-global-part="header"');
   var footerPanel=panel('Global footer','<div class="panel-note">The footer is also a global template part. It has its own content model and exports separately from the page.</div><div class="field-grid">'+
-    field('Footer layout','global.footer.variant',f.variant,{type:'select',options:[{value:'editorial',label:'Editorial statement'},{value:'compact',label:'Compact utility'},{value:'centered',label:'Centered closing'}]})+
+    field('Footer layout','global.footer.variant',footerVariant(f.variant),{type:'select',full:true,options:FOOTER_VARIANTS.map(function(entry){return {value:entry.value,label:entry.label}}),help:v2VariantHelp(FOOTER_VARIANTS,f.variant)+' Hover the footer in the preview to step through the five with the arrows.'})+
     field('Footer brand','global.footer.logoText',f.logoText)+
     field('Footer mark','global.footer.logoMark',f.logoMark)+
     field('Footer logo image URL','global.footer.logoUrl',f.logoUrl||'',{full:true,help:'When supplied, the image replaces the mark and the brand text beside it.'})+
@@ -1061,8 +1303,8 @@ function v2LogoHtml(text,mark,url,alt,description){
 }
 /** True when the identity is an image, and therefore already says the name. */
 function v2HasLogoImage(part){return !!cleanText(part&&part.logoUrl)}
-renderHeader=function(project){v2EnsureProject(project);var h=project.header,b=project.brief,items=h.nav||[],variant=h.variant||'standard',position=h.position||'sticky',classes=['site-header','is-'+position,h.frostedGlass?'has-glass':'',variant==='centered'?'logo-center':'','header-'+variant,h.hideOnScrollDown?'hide-on-scroll':''].filter(Boolean).join(' '),announcement=h.announcement?'<div class="site-header__ann"><div class="c-default"><span>'+v2Rich(h.announcement)+'</span>'+(h.announcementDismissible?'<button class="site-header__dismiss" aria-label="Dismiss announcement">×</button>':'')+'</div></div>':'',nav='<nav class="nav-menu">'+items.map(function(x,i){return '<a href="'+escAttr(normalizeLink(x[1]))+'" style="--nav-i:'+i+'" data-nav-index="'+String(i+1).padStart(2,'0')+'"><span class="nav-menu__label">'+esc(x[0])+'</span></a>'}).join('')+'</nav>',cta=h.cta&&h.cta.text?'<a class="c-btn -primary -small sbs-header-cta" href="'+escAttr(normalizeLink(h.cta.link||'#contact'))+'">'+esc(h.cta.text)+'</a>':'';return '<header class="'+classes+'" data-dst-component="ds-blocks/dst-navigation" data-header-variant="'+escAttr(variant)+'" data-mobile-menu="'+escAttr(mobileMenuStyle(h.mobileMenu))+'">'+announcement+'<div class="site-header__row c-default"><a class="site-header__logo'+(v2HasLogoImage(h)?' has-logo-image':'')+'" href="#top">'+v2LogoHtml(h.logoText||b.clientName,h.logoMark,h.logoUrl,h.logoAlt,h.logoDescription)+(v2HasLogoImage(h)?'':'<span class="site-header__logo-text">'+esc(h.logoText||b.clientName)+'</span>')+'</a><button class="sbs-menu-toggle" aria-expanded="false" aria-label="Open navigation"><span></span><span></span><span></span></button>'+nav+cta+'</div></header>'};
-renderFooter=function(project){v2EnsureProject(project);var f=project.footer,b=project.brief,columns=f.columns||[],socials=f.socials||[],privacy=f.privacyLinks||[],cta=f.cta&&f.cta.text?'<a class="c-btn -primary-inverted" href="'+escAttr(normalizeLink(f.cta.link||'#contact'))+'">'+esc(f.cta.text)+' <span aria-hidden="true">↗</span></a>':'';return '<footer class="site-footer is-style-colors-inverted sbs-footer footer-'+escAttr(f.variant||'editorial')+'" data-dst-component="global-footer"><div class="c-default"><div class="footer__top sbs-footer-statement"><span class="c-heading__pre">'+esc(f.logoText||b.clientName)+'</span><h2 class="footer__nl-head">'+v2Rich(f.statement)+'</h2><p class="footer__nl-sub">'+v2Rich(f.description)+'</p>'+cta+'</div><div class="footer__divider"></div><div class="footer__cols"><div class="footer__col footer__brand"><div class="site-header__logo sbs-footer-logo'+(v2HasLogoImage(f)?' has-logo-image':'')+'">'+v2LogoHtml(f.logoText||b.clientName,f.logoMark,f.logoUrl,f.logoAlt,f.logoDescription)+(v2HasLogoImage(f)?'':'<span>'+esc(f.logoText||b.clientName)+'</span>')+'</div><p>'+v2Rich(b.offer||f.description)+'</p><div class="dst-socials">'+socials.map(function(s){return '<a class="dst-social" href="'+escAttr(normalizeLink(s.url||'#'))+'" aria-label="'+escAttr(s.label||s.network)+'">'+esc((s.network||s.label||'?').slice(0,2))+'</a>'}).join('')+'</div></div>'+columns.map(function(col){return '<div class="footer__col"><h4>'+esc(col.title)+'</h4><ul class="footer__menu">'+(col.links||[]).map(function(x){return '<li><a href="'+escAttr(normalizeLink(x[1]))+'">'+esc(x[0])+'</a></li>'}).join('')+'</ul></div>'}).join('')+'</div><div class="footer__bottom"><div class="footer__legal">'+esc(f.legal)+'</div><ul class="footer__privacy">'+privacy.map(function(x){return '<li><a href="'+escAttr(normalizeLink(x[1]))+'">'+esc(x[0])+'</a></li>'}).join('')+'</ul></div></div><div class="footer__wordmark is-bottom" aria-hidden="true">'+esc(f.wordmark||String(f.logoText||b.clientName).split(' ')[0])+'</div></footer>'};
+renderHeader=function(project){v2EnsureProject(project);var h=project.header,b=project.brief,items=h.nav||[],variant=headerVariant(h.variant),position=h.position||'sticky',classes=['site-header','is-'+position,h.frostedGlass?'has-glass':'',variant==='centered'?'logo-center':'','header-'+variant,h.hideOnScrollDown?'hide-on-scroll':''].filter(Boolean).join(' '),announcement=h.announcement?'<div class="site-header__ann"><div class="c-default"><span>'+v2Rich(h.announcement)+'</span>'+(h.announcementDismissible?'<button class="site-header__dismiss" aria-label="Dismiss announcement">×</button>':'')+'</div></div>':'',nav='<nav class="nav-menu">'+items.map(function(x,i){return '<a href="'+escAttr(normalizeLink(x[1]))+'" style="--nav-i:'+i+'" data-nav-index="'+String(i+1).padStart(2,'0')+'"><span class="nav-menu__label">'+esc(x[0])+'</span></a>'}).join('')+'</nav>',cta=h.cta&&h.cta.text?'<a class="c-btn -primary -small sbs-header-cta" href="'+escAttr(normalizeLink(h.cta.link||'#contact'))+'">'+esc(h.cta.text)+'</a>':'';return '<header class="'+classes+'" data-dst-component="ds-blocks/dst-navigation" data-header-variant="'+escAttr(variant)+'" data-mobile-menu="'+escAttr(mobileMenuStyle(h.mobileMenu))+'">'+announcement+'<div class="site-header__row c-default"><a class="site-header__logo'+(v2HasLogoImage(h)?' has-logo-image':'')+'" href="#top">'+v2LogoHtml(h.logoText||b.clientName,h.logoMark,h.logoUrl,h.logoAlt,h.logoDescription)+(v2HasLogoImage(h)?'':'<span class="site-header__logo-text">'+esc(h.logoText||b.clientName)+'</span>')+'</a><button class="sbs-menu-toggle" aria-expanded="false" aria-label="Open navigation"><span></span><span></span><span></span></button>'+nav+cta+'</div></header>'};
+renderFooter=function(project){v2EnsureProject(project);var f=project.footer,b=project.brief,columns=f.columns||[],socials=f.socials||[],privacy=f.privacyLinks||[],cta=f.cta&&f.cta.text?'<a class="c-btn -primary-inverted" href="'+escAttr(normalizeLink(f.cta.link||'#contact'))+'">'+esc(f.cta.text)+' <span aria-hidden="true">↗</span></a>':'';return '<footer class="site-footer is-style-colors-inverted sbs-footer footer-'+escAttr(footerVariant(f.variant))+'" data-dst-component="global-footer"><div class="c-default"><div class="footer__top sbs-footer-statement"><span class="c-heading__pre">'+esc(f.logoText||b.clientName)+'</span><h2 class="footer__nl-head">'+v2Rich(f.statement)+'</h2><p class="footer__nl-sub">'+v2Rich(f.description)+'</p>'+cta+'</div><div class="footer__divider"></div><div class="footer__cols"><div class="footer__col footer__brand"><div class="site-header__logo sbs-footer-logo'+(v2HasLogoImage(f)?' has-logo-image':'')+'">'+v2LogoHtml(f.logoText||b.clientName,f.logoMark,f.logoUrl,f.logoAlt,f.logoDescription)+(v2HasLogoImage(f)?'':'<span>'+esc(f.logoText||b.clientName)+'</span>')+'</div><p>'+v2Rich(b.offer||f.description)+'</p><div class="dst-socials">'+socials.map(function(s){return '<a class="dst-social" href="'+escAttr(normalizeLink(s.url||'#'))+'" aria-label="'+escAttr(s.label||s.network)+'">'+esc((s.network||s.label||'?').slice(0,2))+'</a>'}).join('')+'</div></div>'+columns.map(function(col){return '<div class="footer__col"><h4>'+esc(col.title)+'</h4><ul class="footer__menu">'+(col.links||[]).map(function(x){return '<li><a href="'+escAttr(normalizeLink(x[1]))+'">'+esc(x[0])+'</a></li>'}).join('')+'</ul></div>'}).join('')+'</div><div class="footer__bottom"><div class="footer__legal">'+esc(f.legal)+'</div><ul class="footer__privacy">'+privacy.map(function(x){return '<li><a href="'+escAttr(normalizeLink(x[1]))+'">'+esc(x[0])+'</a></li>'}).join('')+'</ul></div></div><div class="footer__wordmark is-bottom" aria-hidden="true">'+esc(f.wordmark||String(f.logoText||b.clientName).split(' ')[0])+'</div></footer>'};
 
 effectAttrs=function(section){var e=section.effects||{},motion=Number(state.project.design.motion)||0,parts=[];if(motion<=4)return '';if(e.viewport)parts.push('data-viewport="true" data-viewport-effect="'+escAttr(e.viewport)+'" data-viewport-repeat="'+String(!!e.repeat)+'"');if(e.scroll&&motion>=35)parts.push('data-scroll="true" data-scroll-effect="'+escAttr(e.scroll)+'"');return parts.join(' ')};
 siteCss=function(project){
@@ -1079,8 +1321,8 @@ siteCss=function(project){
 .dst-content2__block{gap:var(--content-gap,clamp(4rem,7vw,11rem))}.dst-content2__col.sbs-copy-col{flex:0 1 var(--content-ratio,46%)}.dst-content2__col.sbs-media-col{flex:1 1 calc(100% - var(--content-ratio,46%))}
 .dst-cards__grid{column-gap:var(--card-gap-x,var(--sbs-grid-gap));row-gap:var(--card-gap-y,var(--sbs-grid-gap))}.c-block{padding:var(--card-pad,var(--sbs-card-pad));border-radius:var(--card-radius,var(--dst--default-radius));background:var(--card-bg,color-mix(in srgb,#fff 68%,${p.bg}));border:var(--card-bd,1px solid color-mix(in srgb,${p.ink} 13%,transparent))}.c-block:hover{transform:translateY(calc(-1 * var(--sbs-hover-lift)))}.dst-card--media-top .c-block__body,.dst-card--media-side .c-block__body{padding:var(--c-block__body-padding,var(--sbs-card-body-pad))}.dst-card--media-side{display:flex;align-items:stretch}.dst-card--media-side .c-block__media{flex:0 0 40%;margin:0}.dst-card--media-side.dst-card--flip{flex-direction:row-reverse}.dst-card--media-side .ph{height:100%;aspect-ratio:auto}.dst-card--media-background{aspect-ratio:var(--card-ar,4/3);min-height:0}.dst-card--media-background>.c-block__body{padding:var(--c-block__body-padding,var(--sbs-card-body-pad))}.ph img{object-fit:var(--media-fit,cover);object-position:var(--media-pos,50% 50%)}
 .dst-list__grid{grid-template-columns:repeat(var(--dst-list__col,1),minmax(0,1fr));gap:var(--dst-list__row-gap,2.4rem)}.dst-list.text-center .dst-list__item{text-align:center;justify-content:center}.dst-list.text-center .dst-list__content{align-items:center}.dst-list.text-right .dst-list__item{text-align:right;justify-content:flex-end}.dst-list.text-right .dst-list__content{align-items:flex-end}.dst-list__content{min-width:0}
-.site-header.header-centered .site-header__row,.site-header.logo-center .site-header__row{display:grid;grid-template-columns:1fr auto 1fr}.site-header.header-centered .site-header__logo{grid-column:2}.site-header.header-centered .nav-menu{grid-column:1;grid-row:1;margin-left:0}.site-header.header-centered .sbs-header-cta{grid-column:3;grid-row:1;justify-self:end}.site-header.header-minimal .nav-menu{display:none}.site-header.header-minimal .site-header__row{min-height:calc(var(--dst--header-height) * .82)}.sbs-logo-image{display:block;max-height:4.8rem;max-width:18rem;width:auto}.site-header.is-fixed{position:fixed;inset:0 0 auto}.site-header.hide-on-scroll{transition:transform .35s ease,background .25s}.site-header.is-hidden{transform:translateY(-110%)}
-.sbs-footer.footer-compact .sbs-footer-statement{display:grid;grid-template-columns:1fr auto;align-items:end;max-width:none}.sbs-footer.footer-compact .footer__nl-sub{grid-column:1}.sbs-footer.footer-centered .sbs-footer-statement{text-align:center;align-items:center;margin-inline:auto}.sbs-footer.footer-centered .sbs-footer-statement>*{margin-inline:auto}.sbs-footer.footer-centered .footer__bottom{justify-content:center;text-align:center}.sbs-footer-logo .sbs-logo-image{max-height:5.4rem}
+.site-header.header-centered .site-header__row,.site-header.logo-center .site-header__row{display:grid;grid-template-columns:1fr auto 1fr}.site-header.header-centered .site-header__logo{grid-column:2}.site-header.header-centered .nav-menu{grid-column:1;grid-row:1;margin-left:0}.site-header.header-centered .sbs-header-cta{grid-column:3;grid-row:1;justify-self:end}.site-header.header-minimal .site-header__row{min-height:calc(var(--dst--header-height) * .82)}#sbs-site .site-header.header-minimal .sbs-menu-toggle{display:block;margin-left:1.6rem;order:3}#sbs-site .site-header.header-minimal .nav-menu{display:none;position:absolute;left:0;right:0;top:100%;flex-direction:column;align-items:flex-start;gap:1.2rem;background:${p.bg};padding:2.2rem 2.4rem 2.8rem;border-bottom:1px solid color-mix(in srgb,${p.ink} 12%,transparent);box-shadow:0 18px 40px color-mix(in srgb,${p.ink} 10%,transparent)}#sbs-site .site-header.header-minimal.menu-open .nav-menu{display:flex}#sbs-site .site-header.header-minimal .sbs-header-cta{order:2;margin-left:auto}#sbs-site .site-header.header-minimal .site-header__row{display:flex;align-items:center;gap:2.4rem;justify-content:flex-end}#sbs-site .site-header.header-stacked .site-header__row{display:grid;grid-template-columns:1fr auto 1fr;grid-template-areas:"lead logo action" "nav nav nav";row-gap:1.3rem;align-items:center}#sbs-site .site-header.header-stacked .site-header__logo{grid-area:logo;justify-self:center}#sbs-site .site-header.header-stacked .sbs-menu-toggle{grid-area:lead;justify-self:start}#sbs-site .site-header.header-stacked .nav-menu{grid-area:nav;justify-content:center;margin:0;gap:2.2rem}#sbs-site .site-header.header-stacked .sbs-header-cta{grid-area:action;justify-self:end}#sbs-site .site-header.header-floating,#sbs-site .site-header.header-floating.is-stuck{background:transparent;border-bottom:0;box-shadow:none;padding:1.4rem 1.4rem 0}#sbs-site .site-header.header-floating .site-header__row{min-height:72px;padding-inline:2.6rem;border:1px solid color-mix(in srgb,${p.ink} 12%,transparent);border-radius:calc(var(--dst--default-radius) + 12px);background:color-mix(in srgb,${p.bg} 93%,transparent);box-shadow:0 16px 44px color-mix(in srgb,${p.ink} 13%,transparent)}#sbs-site .site-header.header-floating.is-stuck .site-header__row{background:color-mix(in srgb,${p.bg} 98%,transparent)}#sbs-site .site-header.header-floating .site-header__ann{border-radius:calc(var(--dst--default-radius) + 12px);margin-bottom:1rem}.sbs-logo-image{display:block;max-height:4.8rem;max-width:18rem;width:auto}.site-header.is-fixed{position:fixed;inset:0 0 auto}.site-header.hide-on-scroll{transition:transform .35s ease,background .25s}.site-header.is-hidden{transform:translateY(-110%)}
+.sbs-footer.footer-compact .sbs-footer-statement{display:grid;grid-template-columns:1fr auto;align-items:end;max-width:none}.sbs-footer.footer-compact .footer__nl-sub{grid-column:1}.sbs-footer.footer-centered .sbs-footer-statement{text-align:center;align-items:center;margin-inline:auto}.sbs-footer.footer-centered .sbs-footer-statement>*{margin-inline:auto}.sbs-footer.footer-centered .footer__bottom{justify-content:center;text-align:center}.sbs-footer.footer-columns>.c-default{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.5fr);column-gap:clamp(4rem,7vw,10rem)}.sbs-footer.footer-columns .sbs-footer-statement{grid-column:1;grid-row:1;padding-bottom:0;max-width:none}.sbs-footer.footer-columns .sbs-footer-statement .footer__nl-head{font-size:clamp(3rem,3.7vw,5.4rem);max-width:16ch}.sbs-footer.footer-columns .footer__divider{display:none}.sbs-footer.footer-columns .footer__cols{grid-column:2;grid-row:1;grid-template-columns:1.2fr 1fr 1fr;gap:3rem}.sbs-footer.footer-columns .footer__bottom{grid-column:1 / -1;margin-top:clamp(5rem,8vw,9rem)}.sbs-footer.footer-minimal .sbs-footer-statement{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2.4rem 3rem;max-width:none;padding-bottom:clamp(3rem,4.5vw,5.5rem)}.sbs-footer.footer-minimal .sbs-footer-statement .footer__nl-head{font-size:clamp(2.4rem,2.5vw,3.6rem);max-width:26ch;letter-spacing:-.02em}.sbs-footer.footer-minimal .sbs-footer-statement .footer__nl-sub,.sbs-footer.footer-minimal .sbs-footer-statement .c-heading__pre,.sbs-footer.footer-minimal .footer__col p,.sbs-footer.footer-minimal .footer__divider,.sbs-footer.footer-minimal .footer__wordmark{display:none}.sbs-footer-logo .sbs-logo-image{max-height:5.4rem}
 .c-decoration .dst-deco{transform:scale(var(--sbs-decor-scale));transform-origin:center}.has-deco>.c-decoration{opacity:calc(.7 + ${exp.toFixed(2)} * .3)}
 [data-motion-level="none"] [data-viewport]>*{opacity:1!important;transform:none!important;transition:none!important}[data-motion-level]:not([data-motion-level="none"]) [data-viewport-effect^="fade"]>*{transition-duration:var(--sbs-motion-duration);transform:translateY(var(--sbs-motion-distance))}[data-motion-level]:not([data-motion-level="none"]) [data-viewport-effect^="fade"].in-view>*{transform:none}.c-btn,.c-block,.ph{transition-duration:var(--sbs-motion-duration)}
 @media(max-width:1024px){.ds-row{grid-template-columns:repeat(var(--cols-t,2),minmax(0,1fr));gap:var(--col-gap-t,var(--col-gap))}.ds-row>.ds-column{grid-column:span var(--column-span-t,1)}.is-heading-split:not(.keep-tablet-columns){grid-template-columns:1fr}.sbs-hero.hero-media-split-right .c-bg,.sbs-hero.hero-media-split-left .c-bg{inset:0!important;width:100%!important;opacity:.28}.sbs-hero.hero-media-split-left .dst-banner__container{align-items:flex-start}.sbs-hero.hero-media-split-left .c-overlay,.sbs-hero.hero-media-split-right .c-overlay{background:linear-gradient(180deg,${p.dark},color-mix(in srgb,${p.dark} 80%,transparent),${p.dark})}}
@@ -1104,11 +1346,16 @@ siteCss=function(project){
  * document and then on a subtree never wires the same control twice.
  */
 siteRuntime=function(){return `(function(){
-var header=document.querySelector('.site-header'),lastY=window.scrollY;
-function stuck(){if(!header)return;header.classList.toggle('is-stuck',window.scrollY>14);if(header.classList.contains('hide-on-scroll')){var down=window.scrollY>lastY&&window.scrollY>120;header.classList.toggle('is-hidden',down);lastY=window.scrollY}}
-stuck();window.addEventListener('scroll',stuck,{passive:true});
-var dismiss=document.querySelector('.site-header__dismiss');if(dismiss)dismiss.addEventListener('click',function(){var bar=dismiss.closest('.site-header__ann');if(bar)bar.remove()});
-var toggle=document.querySelector('.sbs-menu-toggle');if(toggle&&header)toggle.addEventListener('click',function(){var open=header.classList.toggle('menu-open');toggle.setAttribute('aria-expanded',String(open))});
+var lastY=window.scrollY;
+function siteHeader(){return document.querySelector('.site-header')}
+function stuck(){var header=siteHeader();if(!header)return;header.classList.toggle('is-stuck',window.scrollY>14);if(header.classList.contains('hide-on-scroll')){var down=window.scrollY>lastY&&window.scrollY>120;header.classList.toggle('is-hidden',down);lastY=window.scrollY}}
+window.addEventListener('scroll',stuck,{passive:true});
+window.__sbsBindChrome=function(){
+var header=siteHeader();
+var dismiss=document.querySelector('.site-header__dismiss');if(dismiss&&once(dismiss))dismiss.addEventListener('click',function(){var bar=dismiss.closest('.site-header__ann');if(bar)bar.remove()});
+var toggle=document.querySelector('.sbs-menu-toggle');if(toggle&&header&&once(toggle))toggle.addEventListener('click',function(){var open=header.classList.toggle('menu-open');toggle.setAttribute('aria-expanded',String(open))});
+stuck();
+};
 var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches||document.querySelector('#sbs-site').dataset.motionLevel==='none';
 var io=(reduce||!('IntersectionObserver' in window))?null:new IntersectionObserver(function(entries){entries.forEach(function(entry){if(entry.isIntersecting){entry.target.classList.add('in-view');if(entry.target.dataset.viewportRepeat!=='true')io.unobserve(entry.target)}})},{threshold:.12,rootMargin:'0px 0px -6% 0px'});
 /* Includes the root itself: a swapped-in module is very often the very node
@@ -1123,6 +1370,7 @@ each(node,'[data-tabs]',function(tabs){if(!once(tabs))return;var buttons=tabs.qu
 each(node,'[data-hacc]',function(group){if(!once(group))return;group.querySelectorAll('[data-hacc-button]').forEach(function(btn){btn.addEventListener('click',function(){var item=btn.closest('[data-hacc-item]');group.querySelectorAll('[data-hacc-item]').forEach(function(x){x.classList.toggle('is-active',x===item)})})})});
 each(node,'[data-slider]',function(slider){if(!once(slider))return;var track=slider.querySelector('.dst-slider'),prev=slider.querySelector('.-prev'),next=slider.querySelector('.-next'),fill=slider.querySelector('.dst-slider__progress-fill');if(!track)return;function amount(){return Math.max(280,track.clientWidth*.72)}function update(){var max=track.scrollWidth-track.clientWidth,p=max?track.scrollLeft/max:0;if(fill)fill.style.transform='scaleX('+Math.max(.08,p)+')';if(prev)prev.setAttribute('aria-disabled',String(track.scrollLeft<4));if(next)next.setAttribute('aria-disabled',String(track.scrollLeft>max-4))}if(prev)prev.addEventListener('click',function(){track.scrollBy({left:-amount(),behavior:reduce?'auto':'smooth'})});if(next)next.addEventListener('click',function(){track.scrollBy({left:amount(),behavior:reduce?'auto':'smooth'})});track.addEventListener('scroll',update,{passive:true});update()});
 each(node,'a[href^="#"]',function(a){if(!once(a))return;a.addEventListener('click',function(e){var id=a.getAttribute('href');if(id&&id.length>1){var target=document.querySelector(id);if(target){e.preventDefault();target.scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'})}}})});
+window.__sbsBindChrome();
 };
 window.__sbsBind(document);
 })();
@@ -1252,12 +1500,42 @@ function v2RestorePreviewScroll(frame,position){if(!position)return;try{var view
 renderPreview=function(){try{var frame=byId('sitePreview'),scrollPosition=v2PreviewScrollPosition(frame);frame.onload=function(){var restore=function(){v2RestorePreviewScroll(frame,scrollPosition)};restore();setTimeout(restore,120);setTimeout(function(){try{var audit=v2AuditDocument(frame.contentDocument);var changed=JSON.stringify(audit)!==JSON.stringify(state.previewAudit);state.previewAudit=audit;if(changed&&state.currentStep===4)renderEditor()}catch(e){console.warn('Preview audit failed',e)}},80)};frame.srcdoc=buildSiteDocument(state.project)}catch(e){console.error(e);byId('sitePreview').srcdoc='<pre style="padding:20px;font:14px monospace">Preview error: '+esc(e.message)+'</pre>'}};
 
 function v2ClientMeta(project){var p=project.design.palette,b=project.brief;return {name:b.clientName||project.client,slug:slugify(b.clientName||project.client),sourceUrl:'',primaryObjective:b.goal,primaryKeyword:String(b.keywords||'').split(',')[0].trim(),brandPaletteCaptured:[{role:'body canvas',hex:p.bg},{role:'ink and headings',hex:p.ink},{role:'brand accent',hex:p.accent},{role:'supporting surface',hex:p.soft},{role:'inverted ground',hex:p.dark}]}}
-function v2BaseEnvelope(project,name,type){var arch=DATA.archetypes[project.design.archetype]||{};return {$schemaComment:'DST '+type+' export generated by the SBS Page Builder.',$provenanceNote:'The page, navigation and footer are separate importer artifacts generated from one project source.',schemaVersion:'dst-concept-export/1.0',artifactVersion:'sbs-builder-artifact/2.0',catalogVersion:DATA.skill.catalogVersion||'4.0-three-source (merged)',generatedFrom:'dst-concept-to-json',artifactType:type,client:v2ClientMeta(project),concept:{id:slugify(project.id+'-'+type),name:name,archetype:project.design.archetype+' — '+(DATA.archetypes[project.design.archetype]&&DATA.archetypes[project.design.archetype].name||'Custom'),polarity:arch.polarity||'light',isActivePreview:true,theme:buildTheme(project)},__status:{builder:'SBS DST Page Builder '+SBS_BUILDER_VERSION,skill:DATA.skill.name,patternsAvailable:DATA.skill.patternCount,generatedAt:new Date().toISOString()}}}
+/** The nine dials as exported, so an artifact records the design it resolved from. */
+function v5DialSnapshot(design){var out={};DIAL_KEYS.forEach(function(key){var value=Number(design&&design[key]);if(Number.isFinite(value))out[key]=value});return out}
+
+/**
+ * Every artifact names the concept it came from.
+ *
+ * Three concepts produce three sets of artifacts with the same client and the
+ * same schema. Without this block a V2 page JSON and a V1 page JSON are
+ * indistinguishable, and importing the wrong one is a silent failure.
+ */
+function v5ConceptMeta(project){
+  var concept=getActiveConcept(project)||{};
+  var style=concept.style||{};
+  return {
+    conceptId:concept.id||'v1',
+    slot:concept.slot||'V1',
+    conceptName:concept.name||'',
+    variantType:concept.variantType||'core',
+    revision:Number(concept.revision)||1,
+    style:{
+      familyId:style.familyId||'',
+      styleId:style.styleId||'',
+      styleVersion:style.styleVersion||'',
+      variantType:style.variantType||'core',
+      archetypeKey:project.design.archetype||''
+    },
+    designDials:v5DialSnapshot(project.design)
+  };
+}
+
+function v2BaseEnvelope(project,name,type){var arch=DATA.archetypes[project.design.archetype]||{};var meta=v5ConceptMeta(project);return {$schemaComment:'DST '+type+' export generated by the SBS Page Builder.',$provenanceNote:'The page, navigation and footer are separate importer artifacts generated from one concept workspace.',schemaVersion:'dst-concept-export/1.0',artifactVersion:'sbs-builder-artifact/3.0',catalogVersion:DATA.skill.catalogVersion||'4.0-three-source (merged)',generatedFrom:'dst-concept-to-json',artifactType:type,client:v2ClientMeta(project),concept:Object.assign({id:slugify(project.id+'-'+meta.conceptId+'-'+type),name:name},meta,{archetype:project.design.archetype+' — '+(DATA.archetypes[project.design.archetype]&&DATA.archetypes[project.design.archetype].name||'Custom'),polarity:arch.polarity||'light',isActivePreview:true,theme:buildTheme(project)}),__status:{builder:'SBS DST Page Builder '+SBS_BUILDER_VERSION,skill:DATA.skill.name,patternsAvailable:DATA.skill.patternCount,generatedAt:new Date().toISOString()}}}
 function v2NavigationChildren(project){var h=project.header,cta=h.cta&&h.cta.text?[{id:'site-header-cta-group',component:'ds-blocks/button-group',usage:'header-cta-group',confidence:'confirmed',attributes:{justifyContent:'right',justifyContentMobile:'center',alignment:'horizontal',gapBetween:10},children:[{id:'site-header-cta',component:'ds-blocks/c-btn',usage:'header-cta',confidence:'confirmed',attributes:{text:h.cta.text,link:{url:normalizeLink(h.cta.link),opensInNewTab:false,title:''},btnType:'primary',btnSize:'small',hasIcon:false,iconPosition:'row-reverse'},children:[]}]}]:[];var mainContent={id:'site-header-main-content',component:'ds-blocks/dst-navigation-content',usage:'main-navigation-content',confidence:'confirmed',attributes:{navigationArea:'main',isInitialized:true},children:[{id:'site-header-logo',component:'ds-blocks/dst-navigation-logo',usage:'site-logo',confidence:'confirmed',attributes:{inlineSvgLogo:false,logoWidth:'',logoHeight:''},content:{text:h.logoText,mark:h.logoMark,url:h.logoUrl||''},children:[]},{id:'site-header-menu',component:'ds-blocks/dst-navigation-menu',usage:'primary-menu',confidence:'confirmed',attributes:{menuValue:'primary-menu',isBurgerMenu:false},menuItems:h.nav.map(function(x){return {label:x[0],url:normalizeLink(x[1])}}),children:[]}].concat(cta)};var mobileContent={id:'site-header-mobile-content',component:'ds-blocks/dst-navigation-content',usage:'mobile-navigation-content',confidence:'confirmed',attributes:{navigationArea:'mobile',isInitialized:true},children:[{id:'site-header-mobile-logo',component:'ds-blocks/dst-navigation-logo',usage:'mobile-site-logo',confidence:'confirmed',attributes:{inlineSvgLogo:false,logoWidth:'',logoHeight:''},content:{text:h.logoText,mark:h.logoMark,url:h.logoUrl||''},children:[]},{id:'site-header-mobile-menu',component:'ds-blocks/dst-navigation-menu',usage:'mobile-primary-menu',confidence:'confirmed',attributes:{menuValue:'primary-menu',isBurgerMenu:true},menuItems:h.nav.map(function(x){return {label:x[0],url:normalizeLink(x[1])}}),children:[]}].concat(cta)};var children=[];if(h.announcement)children.push({id:'site-header-announcement',component:'ds-blocks/dst-navigation-announcement',usage:'announcement',confidence:'confirmed',attributes:{},content:{text:h.announcement,dismissible:!!h.announcementDismissible},children:[]});children.push({id:'site-header-main',component:'ds-blocks/dst-navigation-main',usage:'main-navigation',confidence:'confirmed',attributes:{},children:[mainContent]});children.push({id:'site-header-mobile',component:'ds-blocks/dst-navigation-mobile',usage:'mobile-navigation',confidence:'confirmed',attributes:{menuStyle:mobileMenuStyle(h.mobileMenu)},children:[mobileContent]});return children}
-headerExport=function(project){v2EnsureProject(project);var h=project.header;return {id:'site-header',component:'ds-blocks/dst-navigation',usage:'header',role:'header',confidence:'confirmed',importerShorthand:true,note:'Global DST navigation export. The nav shorthand carries authored content; children preserve the registered navigation block composition.',layout:{container:h.container||'default',background:{kind:'slot',slot:'body-bg'}},attributes:{dsContainer:'',dsContainerCustom:'',dsContainerSideGap:true,dsContainerAlign:'center',displayType:h.position||'sticky',hideOnScrollDown:!!h.hideOnScrollDown,innerContainerWidth:'container',innerContainerWidthCustom:'',useAnnouncementBar:!!h.announcement,announcementBarDismissible:!!h.announcementDismissible,useCustomHeaderHeight:false,disableHeaderHeightFallback:false,frostedGlass:!!h.frostedGlass,mobileMenuStyle:mobileMenuStyle(h.mobileMenu),backgroundColor:h.bgColor||'var(--dst--body-bg)',backgroundOpacity:Number(h.bgOpacity),textColor:h.textColor||'',linkHoverColor:h.linkHoverColor||'',borderColor:h.borderColor||''},linkTypography:{ref:'theme.elements.navigation.mainLink'},nav:{variant:h.variant,mobileMenu:mobileMenuStyle(h.mobileMenu),logo:{text:h.logoText,mark:h.logoMark,url:h.logoUrl||'',alt:h.logoAlt||h.logoText||'',description:h.logoDescription||'',hideText:!!cleanText(h.logoUrl)},menu:h.nav.map(function(x){return {label:x[0],url:normalizeLink(x[1])}}),cta:{label:h.cta.text,url:normalizeLink(h.cta.link),btnType:'primary'}},children:v2NavigationChildren(project)}};
-footerExport=function(project){v2EnsureProject(project);var f=project.footer;return {id:'site-footer',component:'ds-blocks/dst-wrapper',usage:'footer',role:'footer',confidence:'confirmed',inverted:true,importerShorthand:true,note:'Global three-band DST footer template-part export.',layout:{padding:{top:'default',bottom:'default'},container:'full',background:{kind:'slot',slot:'body-bg-alt'},fullWidthWrapper:true},attributes:{fullWidthWrapper:true,backgroundColor:'var(--dst--body-bg-alt)'},footer:{variant:'footer-'+(f.variant||'editorial'),brand:{text:f.logoText,mark:f.logoMark,url:f.logoUrl||'',alt:f.logoAlt||f.logoText||'',description:f.logoDescription||'',hideText:!!cleanText(f.logoUrl),wordmark:f.wordmark},top:{heading:f.statement,subheading:f.description,cta:{label:f.cta.text,url:normalizeLink(f.cta.link),btnType:'primary-inverted'}},columns:[{kind:'brand',logo:true,socialsTitle:'Connect',body:project.brief.offer}].concat(f.columns.map(function(c){return {kind:'menu',heading:c.title,menuLocation:c.menuLocation||'footer-menu',links:c.links.map(function(x){return {label:x[0],url:normalizeLink(x[1])}})}})),columnWidths:['1.6fr'].concat(f.columns.map(function(){return '1fr'})),columnsTablet:2,columnsMobile:1,bottom:{copyright:f.legal,privacyMenu:{menuLocation:'privacy-menu',links:f.privacyLinks.map(function(x){return {label:x[0],url:normalizeLink(x[1])}})}},headingTypography:{tag:'div',preset:'h4-style',fontFamily:'var(--dst--font-primary)',textTransform:'uppercase',letterSpacing:'.08em',fontSize:'1.4rem',fontWeight:700},backgroundColor:f.bgColor||'var(--dst--body-bg-alt)',textColor:f.textColor||'var(--dst--base-text-color-alt)',headingColor:f.headingColor||'var(--dst--base-heading-color-alt)',linkColor:f.linkColor||'var(--dst--base-link-color-alt)',iconColor:f.accentColor||'var(--dst--primary-color2)',legalColor:f.textColor||'var(--dst--base-text-color-alt)',dividerColor:'rgba(255,255,255,.18)'},children:[{id:'footer-socials',component:'ds-blocks/dst-social-networks',usage:'socials',confidence:'confirmed',attributes:{socialSource:'custom',layoutDirection:'horizontal',alignDesktop:'flex-start',alignMobile:'flex-start',socialNetworks:f.socials.map(function(s,i){return {id:s.id||s.network||'social-'+i,network:s.network||'link',label:s.label||s.network||'Social',url:normalizeLink(s.url||'#')}}),showCaptions:false,socialIconGap:'1.2rem'}}],decorations:[{kind:'motif',motif:'tick-scale',color:'secondary-color1',position:'right',opacity:.1,scale:.9,rationale:'A measured edge rail reinforces the global footer without obscuring content.'}]}}
+headerExport=function(project){v2EnsureProject(project);var h=project.header;return {id:'site-header',component:'ds-blocks/dst-navigation',usage:'header',role:'header',confidence:'confirmed',importerShorthand:true,note:'Global DST navigation export. The nav shorthand carries authored content; children preserve the registered navigation block composition.',layout:{container:h.container||'default',background:{kind:'slot',slot:'body-bg'}},attributes:{dsContainer:'',dsContainerCustom:'',dsContainerSideGap:true,dsContainerAlign:'center',displayType:h.position||'sticky',hideOnScrollDown:!!h.hideOnScrollDown,innerContainerWidth:'container',innerContainerWidthCustom:'',useAnnouncementBar:!!h.announcement,announcementBarDismissible:!!h.announcementDismissible,useCustomHeaderHeight:false,disableHeaderHeightFallback:false,frostedGlass:!!h.frostedGlass,mobileMenuStyle:mobileMenuStyle(h.mobileMenu),backgroundColor:h.bgColor||'var(--dst--body-bg)',backgroundOpacity:Number(h.bgOpacity),textColor:h.textColor||'',linkHoverColor:h.linkHoverColor||'',borderColor:h.borderColor||''},linkTypography:{ref:'theme.elements.navigation.mainLink'},nav:{variant:headerVariant(h.variant),mobileMenu:mobileMenuStyle(h.mobileMenu),logo:{text:h.logoText,mark:h.logoMark,url:h.logoUrl||'',alt:h.logoAlt||h.logoText||'',description:h.logoDescription||'',hideText:!!cleanText(h.logoUrl)},menu:h.nav.map(function(x){return {label:x[0],url:normalizeLink(x[1])}}),cta:{label:h.cta.text,url:normalizeLink(h.cta.link),btnType:'primary'}},children:v2NavigationChildren(project)}};
+footerExport=function(project){v2EnsureProject(project);var f=project.footer;return {id:'site-footer',component:'ds-blocks/dst-wrapper',usage:'footer',role:'footer',confidence:'confirmed',inverted:true,importerShorthand:true,note:'Global three-band DST footer template-part export.',layout:{padding:{top:'default',bottom:'default'},container:'full',background:{kind:'slot',slot:'body-bg-alt'},fullWidthWrapper:true},attributes:{fullWidthWrapper:true,backgroundColor:'var(--dst--body-bg-alt)'},footer:{variant:'footer-'+footerVariant(f.variant),brand:{text:f.logoText,mark:f.logoMark,url:f.logoUrl||'',alt:f.logoAlt||f.logoText||'',description:f.logoDescription||'',hideText:!!cleanText(f.logoUrl),wordmark:f.wordmark},top:{heading:f.statement,subheading:f.description,cta:{label:f.cta.text,url:normalizeLink(f.cta.link),btnType:'primary-inverted'}},columns:[{kind:'brand',logo:true,socialsTitle:'Connect',body:project.brief.offer}].concat(f.columns.map(function(c){return {kind:'menu',heading:c.title,menuLocation:c.menuLocation||'footer-menu',links:c.links.map(function(x){return {label:x[0],url:normalizeLink(x[1])}})}})),columnWidths:['1.6fr'].concat(f.columns.map(function(){return '1fr'})),columnsTablet:2,columnsMobile:1,bottom:{copyright:f.legal,privacyMenu:{menuLocation:'privacy-menu',links:f.privacyLinks.map(function(x){return {label:x[0],url:normalizeLink(x[1])}})}},headingTypography:{tag:'div',preset:'h4-style',fontFamily:'var(--dst--font-primary)',textTransform:'uppercase',letterSpacing:'.08em',fontSize:'1.4rem',fontWeight:700},backgroundColor:f.bgColor||'var(--dst--body-bg-alt)',textColor:f.textColor||'var(--dst--base-text-color-alt)',headingColor:f.headingColor||'var(--dst--base-heading-color-alt)',linkColor:f.linkColor||'var(--dst--base-link-color-alt)',iconColor:f.accentColor||'var(--dst--primary-color2)',legalColor:f.textColor||'var(--dst--base-text-color-alt)',dividerColor:'rgba(255,255,255,.18)'},children:[{id:'footer-socials',component:'ds-blocks/dst-social-networks',usage:'socials',confidence:'confirmed',attributes:{socialSource:'custom',layoutDirection:'horizontal',alignDesktop:'flex-start',alignMobile:'flex-start',socialNetworks:f.socials.map(function(s,i){return {id:s.id||s.network||'social-'+i,network:s.network||'link',label:s.label||s.network||'Social',url:normalizeLink(s.url||'#')}}),showCaptions:false,socialIconGap:'1.2rem'}}],decorations:[{kind:'motif',motif:'tick-scale',color:'secondary-color1',position:'right',opacity:.1,scale:.9,rationale:'A measured edge rail reinforces the global footer without obscuring content.'}]}}
 buildTheme=function(project){v2EnsureProject(project);var d=project.design,p=d.palette,den=clamp(Number(d.density)||0,0,100)/100,exp=clamp(Number(d.expressiveness)||0,0,100)/100,mot=clamp(Number(d.motion)||0,0,100)/100,darkGround=relativeLum(p.bg)<.42,inverseTitle=darkGround?(relativeLum(p.dark)<.3?p.dark:'#080A0E'):'#FFFFFF',altGround=darkGround?'#F7F7F3':p.dark;return {theme:'builder-'+d.archetype.toLowerCase(),designDials:{density:d.density,expressiveness:d.expressiveness,motion:d.motion},colors:{'primary-color1':p.ink,'primary-color2':p.accent,'primary-color3':p.dark,'secondary-color1':inverseTitle,'secondary-color2':p.bg,'secondary-color3':p.soft,'secondary-color4':p.accent,'secondary-color5':p.soft,'secondary-color6':p.accent,'secondary-color7':darkGround?altGround:'#FFFFFF','secondary-color8':p.accent,'body-bg':'secondary-color2','body-bg-alt':darkGround?'secondary-color7':'primary-color3','base-text-color':'primary-color1','base-text-color-alt':'secondary-color1','base-heading-color':'primary-color1','base-heading-color-alt':'secondary-color1','base-link-color':'primary-color2','base-link-color-alt':'secondary-color1','border-color':'secondary-color5','border-color-alt':'rgba(255,255,255,0.28)','pretitle-color':'primary-color2','pretitle-color-alt':'secondary-color1','subtitle-color':'primary-color1','subtitle-color-alt':'secondary-color1','backtitle-color-alt':'rgba(255,255,255,0.08)','counter-color':'primary-color2','counter-color-alt':'secondary-color1'},layout:{'default-radius':d.radius,'default-radius-mobile':d.radius,'default-container-width':'1440px','wide-container-width':'1780px','alt-container-width':'1060px','desktop-vertical-gap':(12.6-6.2*den).toFixed(2)+'vmin','mobile-vertical-gap':Math.round(64-20*den)+'px','desktop-gutter':'2.4rem','header-height':Math.round(96-24*den)+'px','header-height-mobile':'70px','card-padding':(4.6-2.3*den).toFixed(2)+'rem','grid-gap':(3.6-2*den).toFixed(2)+'rem'},backgrounds:{'grad-1':'linear-gradient(135deg, '+altGround+', '+p.ink+')','grad-2':'linear-gradient(135deg, '+p.accent+', '+altGround+')'},typography:{fonts:{primary:{family:d.fontBody,google:true,fallback:'system-ui, sans-serif'},secondary:{family:d.fontDisplay,google:true,fallback:'Georgia, serif'}},headings:{h1:{min:'42px',max:(7.6+5.2*exp).toFixed(1)+'rem',ff:'secondary',fw:600,lh:'0.98',ls:'-0.035em',tt:'none',mb:'0.35em'},h2:{min:'32px',max:(5.2+2.8*exp).toFixed(1)+'rem',ff:'secondary',fw:600,lh:'1.02',ls:'-0.03em',tt:'none',mb:'0.4em'},h3:{min:'22px',max:'3.6rem',ff:'secondary',fw:600,lh:'1.12',tt:'none',mb:'0.5em'},h4:{min:'18px',max:'2.4rem',ff:'primary',fw:600,lh:'1.25',tt:'none',mb:'0.5em'},pretitle:{min:'11px',max:'1.4rem',ff:'primary',fw:600,lh:'1.2',ls:'0.18em',tt:'uppercase',mb:'0.9em',color:'pretitle-color'},subtitle:{min:'18px',max:'2.2rem',ff:'primary',fw:400,lh:'1.55',tt:'none',color:'base-text-color'},backtitle:{min:'60px',max:(10+6*exp).toFixed(1)+'rem',ff:'secondary',fw:600,tt:'none',color:'secondary-color2'}},body:{base:{ff:'primary',fw:400,lh:(1.72-.16*den).toFixed(2),ls:'0'},scale:{sm:{min:'14px',max:'1.5rem'},base:{min:'16px',max:'1.8rem'},lg:{min:'19px',max:'2.3rem'}},presets:[]}},elements:{navigation:{mainLink:{ff:'primary',fs:'1.6rem',fw:600,tt:'none',ls:'0',color:'primary-color1',colorHover:'primary-color2'},mobileLink:{ff:'primary',fs:'2rem',fw:600,color:'primary-color1'}},buttons:{shared:{ff:'primary',fs:'1.5rem',fw:650,tt:'none',ls:'0',radius:d.radius,padding:'1.55rem 2.7rem',gap:'.9em',iconSize:'1.4rem'},primary:{c:'secondary-color1',bg:'primary-color2',bdc:'primary-color2',bdw:'0',cHover:'secondary-color1',bgHover:'primary-color3',bdcHover:'primary-color3'},primaryInverted:{c:'primary-color1',bg:'secondary-color1',bdc:'secondary-color1',bdw:'0',cHover:'secondary-color1',bgHover:'primary-color2',bdcHover:'primary-color2'},secondary:{c:'primary-color1',bg:'transparent',bdc:'primary-color1',bdw:'1px',cHover:'secondary-color1',bgHover:'primary-color1',bdcHover:'primary-color1'},secondaryInverted:{c:'secondary-color1',bg:'transparent',bdc:'secondary-color1',bdw:'1px',cHover:'primary-color1',bgHover:'secondary-color1',bdcHover:'secondary-color1'},link:{c:'primary-color1',cHover:'primary-color2',iconColor:'primary-color1'},icon:{enabled:true,linkEnabled:true,icon:'lib-icon-arrow2',position:'row-reverse'}},forms:{},testimonials:{},socials:{},sliders:{},wysiwyg:{}},motion:{level:mot<.05?'none':mot<.45?'subtle':mot<.75?'active':'dynamic',duration:mot<.05?'0s':(.22+.52*mot).toFixed(2)+'s',distance:Math.round(8+54*mot)+'px',prefersReducedMotionFallback:true,customEffects:{}}}}
-function buildPageExport(project){v2EnsureProject(project);project.sections.forEach(syncSectionNode);var out=v2BaseEnvelope(project,(project.brief.projectName||'Untitled')+' — Page','page');out.concept.page={title:project.brief.projectName,slug:slugify(project.brief.projectName),flow:{id:project.flowId,name:(DATA.flows.find(function(f){return f.id===project.flowId})||{}).name||'Custom',rationale:(DATA.flows.find(function(f){return f.id===project.flowId})||{}).tagline||'Custom sequence'},sections:project.sections.filter(function(s){return s.visible!==false}).map(normalizeExportSection)};out.__status.validation=validateProject();return out}
+function buildPageExport(project){v2EnsureProject(project);project.sections.forEach(syncSectionNode);var out=v2BaseEnvelope(project,(project.brief.projectName||'Untitled')+' — Page','page');out.concept.page={title:project.brief.projectName,slug:slugify(project.brief.projectName),flow:{id:project.flowId,name:(flowById(project.flowId,project)||{}).name||'Custom',rationale:(flowById(project.flowId,project)||{}).tagline||'Custom sequence'},sections:project.sections.filter(function(s){return s.visible!==false}).map(normalizeExportSection)};out.__status.validation=validateProject();return out}
 function buildNavigationExport(project){var out=v2BaseEnvelope(project,(project.brief.clientName||project.brief.projectName)+' — Navigation','navigation');out.concept.global={navigation:headerExport(project)};out.concept.templateParts={navigation:out.concept.global.navigation};return out}
 function buildFooterExport(project){var out=v2BaseEnvelope(project,(project.brief.clientName||project.brief.projectName)+' — Footer','footer');out.concept.global={footer:footerExport(project)};out.concept.templateParts={footer:out.concept.global.footer};return out}
 function buildGlobalsExport(project){var out=v2BaseEnvelope(project,(project.brief.clientName||project.brief.projectName)+' — Global parts','globals');out.concept.global={navigation:headerExport(project),footer:footerExport(project)};out.concept.templateParts=out.concept.global;return out}
@@ -1279,8 +1557,129 @@ validateProject=function(){v2EnsureProject(state.project);var base=legacyValidat
       :legibility.checked+' band'+(legibility.checked===1?'':'s')+' measured on the rendered page; every one clears its contrast target.',
     code:'RENDER-CONTRAST'
   });var comps=Array.from(new Set(base.comps.concat(globalComps))),score=Math.round(checks.reduce(function(n,c){return n+(c.status==='pass'?1:c.status==='warn'?.55:0)},0)/checks.length*100);return {checks:checks,comps:comps,images:base.images,score:score,warnings:checks.filter(function(c){return c.status==='warn'}).length,failures:checks.filter(function(c){return c.status==='fail'}).length}}
-renderReview=function(){var v=validateProject(),audit=state.previewAudit;return pageHead('05 · Review & export','Page and global parts, ready to import.','Navigation and footer are global template-part exports. The page JSON contains page modules only. The standalone HTML combines all three for visual review.',v.failures?v.failures+' blockers':v.warnings?v.warnings+' notes':'Ready')+panel('Concept health','<div class="review-grid"><div class="score-card"><b>'+v.score+'</b><span>Readiness score</span></div><div class="score-card"><b>'+state.project.sections.length+'</b><span>Page modules</span></div><div class="score-card"><b>'+v.comps.length+'</b><span>Component types</span></div></div>')+panel('Preflight checks','<div class="check-list">'+v.checks.map(function(c){return '<div class="check '+c.status+'"><span class="check-ico">'+(c.status==='pass'?'✓':c.status==='warn'?'!':'×')+'</span><div><b>'+esc(c.title)+'</b><p>'+esc(c.detail)+'</p></div><code>'+c.code+'</code></div>'}).join('')+'</div>','Skill + render aware')+panel('Importer downloads','<div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 12h16v7H4z"/></svg></div><div><b>Navigation JSON</b><p>Global DST navigation, authored logo, menu, CTA, responsive composition and registered child block tree.</p></div><button class="export-btn" data-export="navigation">Download</button></div><div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 15h16"/></svg></div><div><b>Footer JSON</b><p>Global footer template part with closing statement, menus, socials, legal row and design metadata.</p></div><button class="export-btn" data-export="footer">Download</button></div><div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5M10 13h5M10 17h5"/></svg></div><div><b>Page JSON</b><p>Page modules only: theme, flow, SBS pattern provenance, normalized DST trees, media, effects and decorations.</p></div><button class="export-btn" data-export="page">Download</button></div><div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></div><div><b>Standalone website HTML</b><p>Navigation + page + footer rendered together with responsive interactions and reduced-motion support.</p></div><button class="export-btn" data-export="html">Download</button></div><details class="advanced-export"><summary>Advanced handoff</summary><div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16v12H4zM8 10h8M8 14h5"/></svg></div><div><b>Complete project bundle</b><p>ZIP containing navigation.json, footer.json, page.json, and website.html for one-click handoff.</p></div><button class="export-btn" data-export="bundle">Download</button></div></details>')+renderEditorNav()}
-handleExport=async function(type){var slug=slugify(state.project.brief.projectName||state.project.brief.clientName);if(type==='json')type='page';if(type==='bundle'){try{announce('Building complete project ZIP…');var blob=await createProjectBundle({navigation:buildNavigationExport(state.project),footer:buildFooterExport(state.project),page:buildPageExport(state.project),websiteHtml:buildSiteDocument(state.project,{includePreview:false})});downloadBlob(slug+'-complete-project.zip',blob);announce('Complete project ZIP downloaded')}catch(error){console.error(error);announce('Could not create the project ZIP')}return}var map={navigation:{name:slug+'-navigation.json',data:function(){return buildNavigationExport(state.project)},message:'Navigation JSON downloaded'},footer:{name:slug+'-footer.json',data:function(){return buildFooterExport(state.project)},message:'Footer JSON downloaded'},page:{name:slug+'-page.json',data:function(){return buildPageExport(state.project)},message:'Page JSON downloaded'},globals:{name:slug+'-globals.json',data:function(){return buildGlobalsExport(state.project)},message:'Global parts JSON downloaded'}};if(map[type]){downloadFile(map[type].name,JSON.stringify(map[type].data(),null,2),'application/json');announce(map[type].message);return}if(type==='html'){downloadFile(slug+'-website.html',buildSiteDocument(state.project),'text/html');announce('Standalone website HTML downloaded');return}if(type==='copy'||type==='copy-page'){var text=JSON.stringify(buildPageExport(state.project),null,2);try{await navigator.clipboard.writeText(text);announce('Page JSON copied')}catch(e){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();announce('Page JSON copied')}}};
+renderReview=function(){var v=validateProject(),audit=state.previewAudit;return pageHead('05 · Review & export','Page and global parts, ready to import.','Navigation and footer are global template-part exports. The page JSON contains page modules only. The standalone HTML combines all three for visual review.',v.failures?v.failures+' blockers':v.warnings?v.warnings+' notes':'Ready')+v5ConceptsPanel()+panel('Concept health','<div class="review-grid"><div class="score-card"><b>'+v.score+'</b><span>Readiness score</span></div><div class="score-card"><b>'+state.project.sections.length+'</b><span>Page modules</span></div><div class="score-card"><b>'+v.comps.length+'</b><span>Component types</span></div></div>')+panel('Preflight checks','<div class="check-list">'+v.checks.map(function(c){return '<div class="check '+c.status+'"><span class="check-ico">'+(c.status==='pass'?'✓':c.status==='warn'?'!':'×')+'</span><div><b>'+esc(c.title)+'</b><p>'+esc(c.detail)+'</p></div><code>'+c.code+'</code></div>'}).join('')+'</div>','Skill + render aware')+panel('Importer downloads','<div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 12h16v7H4z"/></svg></div><div><b>Navigation JSON</b><p>Global DST navigation, authored logo, menu, CTA, responsive composition and registered child block tree.</p></div><button class="export-btn" data-export="navigation">Download</button></div><div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 15h16"/></svg></div><div><b>Footer JSON</b><p>Global footer template part with closing statement, menus, socials, legal row and design metadata.</p></div><button class="export-btn" data-export="footer">Download</button></div><div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5M10 13h5M10 17h5"/></svg></div><div><b>Page JSON</b><p>Page modules only: theme, flow, SBS pattern provenance, normalized DST trees, media, effects and decorations.</p></div><button class="export-btn" data-export="page">Download</button></div><div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></div><div><b>Standalone website HTML</b><p>Navigation + page + footer rendered together with responsive interactions and reduced-motion support.</p></div><button class="export-btn" data-export="html">Download</button></div><details class="advanced-export"><summary>Advanced handoff</summary><div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16v12H4zM8 10h8M8 14h5"/></svg></div><div><b>Complete project bundle</b><p>ZIP containing navigation.json, footer.json, page.json, and website.html for one-click handoff.</p></div><button class="export-btn" data-export="bundle">Download</button></div></details>')+renderEditorNav()}
+/**
+ * The export filename carries the concept.
+ *
+ * Three concepts export the same four artifact names from the same client. A
+ * strategist with `redmoon-page.json` twice in a downloads folder has no way to
+ * tell which proposal they are about to import.
+ */
+function v5ExportSlug(){
+  var base=slugify(state.project.brief.projectName||state.project.brief.clientName);
+  var concept=getActiveConcept(state.project);
+  if(!concept||listGeneratedConcepts(state.project).length<2)return base;
+  return base+'-'+String(concept.slot||'v1').toLowerCase();
+}
+
+/**
+ * Builds one concept's four artifacts without leaving that concept active.
+ *
+ * Exporting is a read, so activating each concept in turn is safe — but the
+ * strategist must be looking at the same concept afterwards as before, whatever
+ * happens in between.
+ */
+function v5WithConcept(conceptId,build){
+  var restore=getActiveConceptId(state.project);
+  var settle=function(){
+    bindProject(state.project);
+    v2EnsureProject(state.project);
+    v3EnsureDesign(state.project);
+    state.project.sections.forEach(syncSectionNode);
+  };
+  try{
+    setActiveConcept(state.project,conceptId);
+    settle();
+    return build(getActiveConcept(state.project));
+  }finally{
+    setActiveConcept(state.project,restore);
+    settle();
+  }
+}
+
+/**
+ * True when a concept still holds exactly the workspace it was generated as.
+ *
+ * The distinction the flow step needs: a concept nobody has touched yet should
+ * follow the chosen structure so the three proposals stay comparable, and a
+ * concept somebody has worked on should not be rebuilt underneath them.
+ */
+function v5ConceptIsUntouched(concept){
+  if(!concept||!concept.generatedFrom)return false;
+  return JSON.stringify(snapshotWorkspace(concept))===JSON.stringify(concept.generatedFrom);
+}
+
+/**
+ * Applying a page flow, across concepts.
+ *
+ * The first flow chosen for a project lands on every concept, because three
+ * proposals built on three different structures are not a comparison. Once a
+ * concept has been edited it keeps its own flow, and a later flow change reaches
+ * only the concept being edited — a structure change is never propagated over
+ * somebody's work.
+ */
+applyFlow=function(id){
+  var flow=flowById(id);
+  if(!flow)return;
+  var followers=listGeneratedConcepts(state.project)
+    .filter(function(concept){return concept.id!==getActiveConceptId(state.project)&&v5ConceptIsUntouched(concept)})
+    .map(function(concept){return concept.id});
+  mutate(function(){
+    applyFlowToActiveConcept(flow);
+    followers.forEach(function(conceptId){
+      v5WithConcept(conceptId,function(concept){
+        applyFlowToActiveConcept(flow);
+        // The concept has not been worked on, so this is still its generated
+        // state: record it as such, or "reset to generated" would undo the flow.
+        concept.generatedFrom=snapshotWorkspace(concept);
+      });
+    });
+    v5SettleActiveConcept();
+  },{message:followers.length
+    ? 'Applied '+flow.id+' · '+flow.name+' to all '+(followers.length+1)+' concepts'
+    : 'Applied '+flow.id+' · '+flow.name});
+};
+
+/** Every concept's complete export set, in one archive, for handoff and record. */
+async function v5ExportAllConcepts(){
+  var concepts=listGeneratedConcepts(state.project);
+  if(concepts.length<2){announce('Generate the three concepts before exporting the archive.');return}
+  announce('Building the all-concepts archive…');
+  var manifest={
+    schemaVersion:'sbs-concept-set-archive/1.0',
+    builder:'SBS DST Page Builder '+SBS_BUILDER_VERSION,
+    generatedAt:new Date().toISOString(),
+    client:v2ClientMeta(state.project),
+    note:'One folder per concept. WordPress imports one concept at a time; this archive is for handoff and record.',
+    concepts:[]
+  };
+  var payload=concepts.map(function(concept){
+    return v5WithConcept(concept.id,function(active){
+      manifest.concepts.push(Object.assign({folder:active.slot},v5ConceptMeta(state.project),{
+        updatedAt:active.updatedAt,
+        sections:state.project.sections.length,
+        flowId:state.project.flowId
+      }));
+      return {
+        slot:active.slot,
+        navigation:buildNavigationExport(state.project),
+        footer:buildFooterExport(state.project),
+        page:buildPageExport(state.project),
+        websiteHtml:buildSiteDocument(state.project,{includePreview:false})
+      };
+    });
+  });
+  try{
+    var blob=await createConceptSetBundle({concepts:payload,manifest:manifest});
+    downloadBlob(slugify(state.project.brief.projectName||state.project.brief.clientName)+'-all-concepts.zip',blob);
+    announce('All-concepts archive downloaded');
+  }catch(error){
+    console.error(error);
+    announce('Could not create the all-concepts archive');
+  }
+}
+
+handleExport=async function(type){var slug=v5ExportSlug();if(type==='json')type='page';if(type==='all-concepts'){await v5ExportAllConcepts();return}if(type==='bundle'){try{announce('Building complete project ZIP…');var blob=await createProjectBundle({navigation:buildNavigationExport(state.project),footer:buildFooterExport(state.project),page:buildPageExport(state.project),websiteHtml:buildSiteDocument(state.project,{includePreview:false})});downloadBlob(slug+'-complete-project.zip',blob);announce('Complete project ZIP downloaded')}catch(error){console.error(error);announce('Could not create the project ZIP')}return}var map={navigation:{name:slug+'-navigation.json',data:function(){return buildNavigationExport(state.project)},message:'Navigation JSON downloaded'},footer:{name:slug+'-footer.json',data:function(){return buildFooterExport(state.project)},message:'Footer JSON downloaded'},page:{name:slug+'-page.json',data:function(){return buildPageExport(state.project)},message:'Page JSON downloaded'},globals:{name:slug+'-globals.json',data:function(){return buildGlobalsExport(state.project)},message:'Global parts JSON downloaded'}};if(map[type]){downloadFile(map[type].name,JSON.stringify(map[type].data(),null,2),'application/json');announce(map[type].message);return}if(type==='html'){downloadFile(slug+'-website.html',buildSiteDocument(state.project),'text/html');announce('Standalone website HTML downloaded');return}if(type==='copy'||type==='copy-page'){var text=JSON.stringify(buildPageExport(state.project),null,2);try{await navigator.clipboard.writeText(text);announce('Page JSON copied')}catch(e){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();announce('Page JSON copied')}}};
 
 updateBinding=function(path,value,input){
   if(path.indexOf('global.')===0){inputCheckpoint();var localPath=path.replace(/^global\./,''),boolFields=['header.frostedGlass','header.hideOnScrollDown','header.announcementDismissible'];if(boolFields.includes(localPath))value=v2Bool(value);setPath(state.project,localPath,value);if(localPath==='header.logoText')state.project.header.logoTextCustom=true;if(localPath==='header.logoMark')state.project.header.logoMarkCustom=true;if(localPath==='footer.logoText')state.project.footer.logoTextCustom=true;if(localPath==='footer.logoMark')state.project.footer.logoMarkCustom=true;if(localPath==='footer.legal')state.project.footer.legalCustom=true;v2EnsureProject(state.project);if(input&&input.type==='range'){var opacityOut=input.parentElement&&input.parentElement.querySelector('output')||input.closest('.field')&&input.closest('.field').querySelector('output');if(opacityOut)opacityOut.textContent=Math.round(Number(value))+'%'}queueSave();queuePreview();
@@ -1464,6 +1863,7 @@ function fidelityExportTarget(node,settings,components){
   if(target&&components.indexOf(target.component)===-1)target=null;
   return target||fidelityNode({node:node},components);
 }
+var FIDELITY_SURFACE_COMPONENTS=['ds-blocks/dst-wrapper','ds-blocks/dst-banner','ds-blocks/ds-columns','ds-blocks/c-cards','ds-blocks/c-list','ds-blocks/l-content-2'];
 function fidelityApplySurface(attributes,section,settings){
   attributes.dsContainerSideGap=!!settings.sidePadding;
   attributes.backgroundColor=settings.backgroundColor||'';
@@ -1477,7 +1877,7 @@ function fidelityApplySurface(attributes,section,settings){
 function fidelityApplySection(section){
   var fidelity=fidelityEnsureSection(section);
   if(!fidelity)return;
-  var surface=fidelityTarget(section,fidelity.surface,['ds-blocks/dst-wrapper','ds-blocks/dst-banner','ds-blocks/ds-columns','ds-blocks/c-cards','ds-blocks/c-list','ds-blocks/l-content-2'])||section.node;
+  var surface=fidelityTarget(section,fidelity.surface,FIDELITY_SURFACE_COMPONENTS)||section.node;
   surface.attributes=surface.attributes||{};
   fidelityApplySurface(surface.attributes,section,fidelity.surface);
   if(fidelity.columns){
@@ -1860,19 +2260,6 @@ siteCss=function(project){return siteCssBeforeTone(project)+'\n#sbs-site .is-sty
  * More page flows
  * ---------------------------------------------------------------- */
 
-var SBS_V3_FLOWS=[
-  {id:'B10',name:'Before / After Proof',tagline:'Show the change, price the change, prove the change',bestFor:'Renovation, dental, aesthetics, fitness, restoration and any transformation offer.',avoid:'Services with nothing visual to compare.',families:['hero','split','gallery','pricing','testimonial','faq','cta'],rhythm:'The transformation appears twice: once as one story, once as a body of work.'},
-  {id:'B11',name:'Objection Clearing',tagline:'Promise, proof, objections, price, action',bestFor:'High-consideration purchases where the visitor arrives sceptical.',avoid:'Impulse or low-cost offers.',families:['hero','text','testimonial','faq','pricing','contact'],rhythm:'Every doubt is answered before the price is shown.'},
-  {id:'B12',name:'Compliance & Assurance',tagline:'Credentials first, capability second, contact third',bestFor:'Regulated sectors: legal, financial, medical, security, public sector.',avoid:'Playful consumer brands.',families:['hero','logo','stats','text','team','faq','contact'],rhythm:'Authority is established before anything is asked for.'},
-  {id:'B13',name:'Service Menu',tagline:'One promise, many services, one booking path',bestFor:'Multi-service practices, clinics, agencies and trades.',avoid:'Single-product businesses.',families:['hero','cards','tabs','pricing','testimonial','contact'],rhythm:'The menu is scannable, then the page narrows to one action.'},
-  {id:'B14',name:'Founder Story',tagline:'Person, purpose, practice, proof',bestFor:'Consultants, coaches, studios and practices built around named people.',avoid:'Large organisations with no single voice.',families:['hero','split','timeline','team','testimonial','cta'],rhythm:'The story earns the credibility that the closing band spends.'},
-  {id:'B15',name:'Location & Visit',tagline:'Find us, trust us, come in',bestFor:'Clinics, showrooms, restaurants, venues and any premises-led business.',avoid:'Remote-only businesses.',families:['hero','cards','gallery','stats','faq','contact'],rhythm:'Practical detail is never more than one section away.'},
-  {id:'C4',name:'Feature Comparison',tagline:'Position, compare, prove, convert',bestFor:'Products and platforms sold against a known alternative.',avoid:'Categories with no obvious competitor.',families:['hero','split','tabs','stats','pricing','faq','cta'],rhythm:'The comparison sits between the claim and the price.'},
-  {id:'C5',name:'Free-Trial Funnel',tagline:'Value in one line, product in three, start now',bestFor:'Self-serve software with a trial or freemium tier.',avoid:'Sales-led enterprise offers.',families:['hero','logo','cards','split','pricing','faq','cta'],rhythm:'The same action appears in the hero, mid-page and close.'},
-  {id:'D4',name:'Resource Hub',tagline:'Answer the question, then offer the next one',bestFor:'Content-led acquisition, education and search-first pages.',avoid:'Pages with a single hard conversion target.',families:['hero','text','blog','accordion','contact'],rhythm:'Utility first; the conversion is an offer, not a demand.'},
-  {id:'F3',name:'Editorial Long-Read',tagline:'One argument, told properly, ending in an invitation',bestFor:'Thought leadership, manifestos, campaign and brand pages.',avoid:'Pages that must convert in the first screen.',families:['hero','text','split','timeline','gallery','testimonial','cta'],rhythm:'A single argument developed section by section.'}
-];
-DATA.flows=DATA.flows.concat(SBS_V3_FLOWS.filter(function(flow){return !DATA.flows.some(function(existing){return existing.id===flow.id})}));
 
 /* ---------------------------------------------------------------- *
  * Design system state
@@ -1883,11 +2270,8 @@ function v3EnsureCustomFlows(project){
   project.customFlows=project.customFlows.filter(function(flow){
     return flow&&typeof flow==='object'&&typeof flow.id==='string'&&Array.isArray(flow.families)&&flow.families.length;
   }).slice(0,20);
-  // A flow typed by the strategist lives on the project, so it must be put back
-  // into the catalog on load or the saved `flowId` would resolve to flow one.
-  project.customFlows.forEach(function(flow){
-    if(!DATA.flows.some(function(existing){return existing.id===flow.id}))DATA.flows.push(flow);
-  });
+  // A typed flow lives on the project and is resolved through `allFlows`, so a
+  // saved `flowId` still finds it without the catalogue growing per project.
 }
 
 /**
@@ -1915,7 +2299,7 @@ function v9PaletteHealth(design){
 
 function v3EnsureDesign(project){
   if(!project||typeof project!=='object')return project;
-  var design=project.design=project.design&&typeof project.design==='object'?project.design:{};
+  var design=v5EnsureSlice(project,'design',function(){return {}});
   ensureDials(design);
   design.buttonStyle=normalizeButtonStyle(design.buttonStyle);
   v9EnsureLegiblePalette(design);
@@ -2070,7 +2454,7 @@ function v3DialField(design,key){
 function v3DialGroups(design){
   return DIAL_GROUPS.map(function(group){
     return '<section class="dial-group"><div class="dial-group-head"><h3>'+esc(group.label)+'</h3><p>'+esc(group.hint)+'</p></div>'+
-      group.dials.map(function(key){return v3DialField(design,key)}).join('')+'</section>';
+      '<div class="dial-grid">'+group.dials.map(function(key){return v3DialField(design,key)}).join('')+'</div></section>';
   }).join('');
 }
 
@@ -2103,14 +2487,13 @@ function v3DialSample(design){
     '--sample-stagger:'+tokens.motionStagger,'--sample-motion-scale:'+tokens.motionScale,
     '--sample-accent-rule:'+tokens.accentRule
   ].join(';');
-  var titles=['Space and rhythm','Type and colour','Surface and motion'];
   return '<div class="dial-sample" data-dial-sample style="'+escAttr(variables)+'">'+
-    '<div class="dial-sample-row" aria-hidden="true">'+titles.map(function(title){
-      return '<div class="dial-sample-card"><b>'+esc(title)+'</b><p>Body copy shows the reading width, the line height and the space inside a card.</p></div>';
-    }).join('')+'</div>'+
+    '<div class="dial-sample-row" aria-hidden="true">'+
+      '<div class="dial-sample-card"><b>Space, type and surface</b>'+
+      '<p>Body copy shows the reading width, the line height and the space inside a card.</p></div>'+
+    '</div>'+
     '<div class="dial-sample-foot">'+
       '<span class="dial-sample-title" aria-hidden="true"><i class="dial-sample-accent"></i>Headline scale</span>'+
-      '<button type="button" class="dial-sample-replay" data-dial-replay>Replay the movement</button>'+
     '</div>'+
   '</div>';
 }
@@ -2127,7 +2510,9 @@ function v3ButtonStylePanel(design){
     '--sbs-motion-ease:'+tokens.motionEase,
     '--sbs-hover-lift:'+tokens.hoverLift,
     '--sbs-border-width:'+tokens.borderWidth,
-    '--sbs-accent-rule:'+tokens.accentRule
+    '--sbs-accent-rule:'+tokens.accentRule,
+    '--sbs-on-accent:'+readableOn(palette.accent||'#ed5b38',['#ffffff',palette.ink||'#181a1d',palette.dark||'#181a1d']),
+    '--sbs-on-ink:'+readableOn(palette.ink||'#181a1d',['#ffffff',palette.bg||'#ffffff',palette.soft||'#eeeae4'])
   ].join(';');
   return '<div class="btn-style-list" style="'+escAttr(variables)+'">'+BUTTON_STYLES.map(function(style){
     var selected=design.buttonStyle===style.id;
@@ -2150,8 +2535,10 @@ renderDirection=function(){
   // One catalogue, shared with the brief reader — so a brief that names a
   // typeface names one this select can actually offer.
   var fonts=fontOptions();
-  return pageHead('02 · Direction','Choose a visual system, then tune it.','Pick an archetype for the starting palette and type, choose a button family, then move the dials. Every dial changes the live preview immediately and is written into the WordPress theme export.',d.archetype+' · '+(arch.name||'Custom'))+
-    panel('DST visual archetype','<div class="choice-grid">'+choices+'</div>','A–M')+
+  var activeStyle=v10ActiveStyle();
+  return pageHead('02 · Direction','Choose a visual system, then tune it.','Start with a style family and one of its five styles: that sets the palette, the type, all nine dials, how each band is composed and which patterns the builder reaches for. Everything below remains adjustable, and every value is written into the WordPress theme export.',activeStyle?activeStyle.name:(d.archetype+' · '+(arch.name||'Custom')))+
+    v10StylePicker({title:'Style family and style'})+
+    panel('DST visual archetype','<div class="panel-note">The original thirteen archetypes. They set a starting palette and type pairing only — a style profile from the library above also decides composition, section recipes and pattern preference. Choosing an archetype here clears the concept\'s style reference.</div><div class="choice-grid">'+choices+'</div>','A–M')+
     panel('Palette and type','<div class="panel-note">The five colors become semantic DST tokens: body, text, accent, supporting surface and inverted ground. Corner rounding is now the Corner softness dial below.</div><div class="palette-row">'+[['bg','Canvas'],['ink','Ink'],['accent','Accent'],['soft','Soft'],['dark','Dark']].map(function(x){return '<label class="color-field"><input type="color" data-bind="design.palette.'+x[0]+'" value="'+escAttr(d.palette[x[0]])+'"><span>'+x[1]+'</span></label>'}).join('')+'</div>'+v9PaletteHealth(d)+'<div class="field-grid" style="margin-top:16px">'+field('Body typeface','design.fontBody',d.fontBody,{type:'select',options:fonts})+field('Display typeface','design.fontDisplay',d.fontDisplay,{type:'select',options:fonts})+'</div>')+
     panel('Button family','<div class="panel-note">Choose one system for the primary action, the secondary action and text links. Hover any sample to see exactly what a visitor will see. The choice is applied to every registered button in the preview and the export.</div>'+v3ButtonStylePanel(d),'Primary · Secondary · Link')+
     panel('Quick styles','<div class="panel-note">One click sets every dial below. Start here, then adjust.</div>'+v3PresetButtons(d),String(DIAL_PRESETS.length)+' presets')+
@@ -2266,6 +2653,19 @@ function v3ApplyButtons(section,buttons){
   });
 }
 
+/** The footer's three pieces of writing, when the draft carries them. */
+function v3ApplyFooterDraft(footer){
+  if(!footer)return;
+  var target=state.project.footer;
+  if(!target)return;
+  var statement=v3CleanText(footer.statement,200),
+    description=v3CleanText(footer.description,400),
+    cta=v3CleanText(footer.ctaText,60);
+  if(statement)target.statement=statement;
+  if(description)target.description=description;
+  if(cta){target.cta=target.cta||{text:'',link:'#contact'};target.cta.text=cta}
+}
+
 function v3ApplyContentDraft(draft){
   var sections=state.project.sections.filter(function(section){return section.visible!==false});
   var drafted=(draft&&draft.sections)||[];
@@ -2289,7 +2689,8 @@ function v3ApplyContentDraft(draft){
       v3ApplyButtons(section,entry.buttons);
       syncSectionNode(section);
     });
-  },{message:'AI content applied to '+sections.length+' module'+(sections.length===1?'':'s')});
+    v3ApplyFooterDraft(draft&&draft.footer);
+  },{message:'AI content applied to '+sections.length+' module'+(sections.length===1?'':'s')+((draft&&draft.footer&&v3CleanText(draft.footer.statement))?' and the footer':'')});
 }
 
 function v3ApplyCustomFlow(spec){
@@ -2297,7 +2698,7 @@ function v3ApplyCustomFlow(spec){
   if(!families.length)return;
   v3EnsureCustomFlows(state.project);
   var index=1,id='X1';
-  while(DATA.flows.some(function(existing){return existing.id===id})){index+=1;id='X'+index}
+  while(flowExists(id,state.project)){index+=1;id='X'+index}
   var flow={
     id:id,
     name:v3CleanText(spec.name,60)||'Custom outline',
@@ -2309,7 +2710,7 @@ function v3ApplyCustomFlow(spec){
     custom:true
   };
   state.project.customFlows.push(flow);
-  DATA.flows.push(flow);
+  // The project owns it. Nothing is added to the catalogue.
   applyFlow(id);
 }
 
@@ -2343,7 +2744,7 @@ function v3BrainContext(){
     // the brief, and it cannot judge "different from the others" or "close to
     // what this archetype already is" without seeing what they currently are.
     archetypes:v9ArchetypeCatalog(),
-    flows:DATA.flows,
+    flows:allFlows(),
     mutate:mutate,
     queueSave:queueSave,
     queuePreview:queuePreview,
@@ -2473,7 +2874,6 @@ byId('editorInner').addEventListener('click',function(event){
  * Dial and button-style bindings
  * ---------------------------------------------------------------- */
 
-var v3ReplayTimer=null;
 var updateBindingBeforeV3=updateBinding;
 updateBinding=function(path,value,input){
   var result=updateBindingBeforeV3(path,value,input);
@@ -2487,8 +2887,6 @@ updateBinding=function(path,value,input){
     // The sample block and the button swatches read dial tokens through inline
     // custom properties, so refresh them without re-rendering the whole step.
     v3RefreshDialSurfaces();
-    // Moving the movement dial should show what it did, not describe it.
-    if(dialMatch[1]==='motion'){clearTimeout(v3ReplayTimer);v3ReplayTimer=setTimeout(v3ReplayDialSample,220)}
     queueSave();
     queuePreview();
   }
@@ -2543,16 +2941,7 @@ byId('editorInner').addEventListener('change',function(event){
   });
 });
 
-function v3ReplayDialSample(){
-  var sample=document.querySelector('[data-dial-sample]');
-  if(!sample)return;
-  sample.classList.add('is-arriving');
-  // Two frames: one to paint the start state, one to release the transition.
-  requestAnimationFrame(function(){requestAnimationFrame(function(){sample.classList.remove('is-arriving')})});
-}
-
 byId('editorInner').addEventListener('click',function(event){
-  if(event.target.closest('[data-dial-replay]')){v3ReplayDialSample();return}
   var trigger=event.target.closest('[data-dial-preset]');
   if(!trigger)return;
   var preset=DIAL_PRESETS.find(function(entry){return entry.id===trigger.dataset.dialPreset});
@@ -2674,12 +3063,57 @@ function v3AccordionDurations(design){
  * applied exactly once per section and recorded, so a later edit in Extended
  * view is never silently reverted on the next render.
  */
-/** The bands that carry copy over a photograph and therefore need a scrim. */
-var BANNER_OVERLAY_FAMILIES=['hero','cta'];
+/**
+ * Copy over a photograph needs a wash. All of it, not two families.
+ *
+ * This used to be a list — hero and cta — and the audit of all 154 patterns said
+ * that was wrong for nineteen of them: six team bands, six card bands, two FAQ
+ * bands, two timelines, a text band and a testimonial all paint a photograph
+ * behind their copy and painted nothing over it. Whatever the picture happens to
+ * be doing behind the words, the type has to hold.
+ *
+ * So the rule is now the condition itself: if a section paints a photograph and
+ * is not already painting a wash over it, it gets the default one — the brand's
+ * own dark at 60%, which is the strength at which the wash *is* the ground and
+ * the copy inverts to suit.
+ */
 var BANNER_OVERLAY_STRENGTH=0.6;
 /* Below this, a scrim is a tint over a photograph and the photo is still the
    ground; at or above it the scrim *is* the ground and decides the text tone. */
 var BANNER_SCRIM_GROUND_STRENGTH=0.6;
+
+/**
+ * The node this section actually paints a photograph on, at any depth.
+ *
+ * Mirrors the renderer exactly: a wrapper paints only what its own
+ * `backgroundImage` names, while a banner falls back to the section's first
+ * media — which is why a hero needs no authored background to have one.
+ */
+function v3PhotoNode(section){
+  if(!section||!section.node)return null;
+  var found=null;
+  (function walk(node){
+    if(found||!node||typeof node!=='object')return;
+    var attrs=node.attributes||{},raw=attrs.backgroundImage,
+      named=Array.isArray(raw)?raw.length>0:!!(raw&&(raw.src||raw.url||raw.id));
+    if(named||(node.component==='ds-blocks/dst-banner'&&mediaChoice(section,0))){found=node;return}
+    (node.children||[]).forEach(walk);
+  })(section.node);
+  return found;
+}
+
+/** The wash a photograph gets when the pattern did not paint one itself. */
+function v3DefaultScrim(){return fidelityRgba(state.project.design.palette.dark,1)}
+
+/**
+ * True when this surface is already painting a wash of its own.
+ *
+ * A colour with the flag off is not a wash — it is a value the pattern carries
+ * and does not use, and three of the unreadable bands were exactly that.
+ */
+function v3PaintsScrim(settings){
+  return !!(settings&&settings.overlayEnabled&&cleanText(settings.overlay));
+}
 
 function v3SectionDefaults(section){
   var fidelity=section&&section.fidelity;
@@ -2705,40 +3139,85 @@ function v3SectionDefaults(section){
     applied.logoGrid=true;
   }
 
-  // A contact band sits on a photograph and holds a form. Without a scrim the
-  // labels are unreadable, so one flat 50% wash is the default rather than an
-  // option a strategist has to discover.
-  if(fidelity.surface&&!applied.contactOverlay&&section.family==='contact'){
-    fidelity.surface.overlayEnabled=true;
-    // The alpha lives in the colour, not in `overlayOpacity`: the editor's
-    // opacity slider reads the rgba alpha, and setting both would multiply them
-    // into a 25% wash while the control still claimed 50%.
-    fidelity.surface.overlay=fidelityRgba(state.project.design.palette.dark,0.5);
-    fidelity.surface.overlayOpacity=1;
-    fidelity.surface.gradientStartOpacity=1;
-    fidelity.surface.gradientEndOpacity=1;
-    applied.contactOverlay=true;
-  }
-
-  // A hero or a closing CTA is a photograph with words on it. Whatever the
-  // picture happens to be doing behind the headline — a bright sky, a white
-  // wall, a busy crowd — the type has to hold, so every banner starts with a
-  // readable wash instead of whatever contrast the crop happened to give.
-  // Patterns that name their own overlay keep it: this only fills a blank.
-  if(fidelity.surface&&!applied.bannerOverlay&&BANNER_OVERLAY_FAMILIES.indexOf(section.family)!==-1){
-    if(!cleanText(fidelity.surface.overlay)){
-      fidelity.surface.overlayEnabled=true;
-      // The colour is opaque and the strength carries the 60%, because that is
-      // the split the overlay control shows: a solid overlay is always written
-      // at full alpha and "Overlay strength" is the slider people reach for.
-      fidelity.surface.overlay=fidelityRgba(state.project.design.palette.dark,1);
-      fidelity.surface.overlayOpacity=BANNER_OVERLAY_STRENGTH;
-      fidelity.surface.gradientStartOpacity=1;
-      fidelity.surface.gradientEndOpacity=1;
+  // Any band that paints a photograph behind its copy. Whatever the picture
+  // happens to be doing there — a bright sky, a white wall, a busy crowd — the
+  // type has to hold, so it starts with a readable wash instead of whatever
+  // contrast the crop happened to give. A pattern that paints its own wash keeps
+  // it: this only fills a blank.
+  if(fidelity.surface&&!applied.photoScrim&&!applied.bannerOverlay){
+    var photo=v3PhotoNode(section);
+    if(photo){
+      var onSurface=v3IsSurfaceNode(section,fidelity,photo);
+      if(!v3PaintsScrim(onSurface?fidelity.surface:v3NodeScrim(photo))){
+        // The colour is opaque and the strength carries the 60%, because that is
+        // the split the overlay control shows: a solid overlay is always written
+        // at full alpha and "Overlay strength" is the slider people reach for.
+        var scrim=v3DefaultScrim();
+        if(onSurface){
+          fidelity.surface.overlayEnabled=true;
+          fidelity.surface.overlay=scrim;
+          fidelity.surface.overlayOpacity=BANNER_OVERLAY_STRENGTH;
+          fidelity.surface.gradientStartOpacity=1;
+          fidelity.surface.gradientEndOpacity=1;
+        }else{
+          // The photograph is not on the node the surface control edits — a FAQ
+          // band paints it three levels down — so the wash is written where the
+          // renderer will actually read it.
+          photo.attributes=photo.attributes||{};
+          photo.attributes.backgroundOverlayEnabled=true;
+          photo.attributes.backgroundOverlay=scrim;
+          photo.attributes.backgroundOverlayOpacity=BANNER_OVERLAY_STRENGTH;
+        }
+        // Recorded so a later brand change can move a wash nobody has edited,
+        // and so an edited one is never moved.
+        applied.photoScrimColor=scrim;
+      }
+      v3ToneFromScrim(section,fidelity,photo);
+      applied.photoScrim=true;
     }
-    v3BannerToneFromScrim(section,fidelity);
-    applied.bannerOverlay=true;
   }
+  v3RefreshPhotoScrim(section,fidelity,applied);
+}
+
+/** The overlay settings as they exist on one node, in fidelity's own shape. */
+function v3NodeScrim(node){
+  var attrs=(node&&node.attributes)||{};
+  return {overlayEnabled:attrs.backgroundOverlayEnabled,overlay:attrs.backgroundOverlay,overlayOpacity:attrs.backgroundOverlayOpacity};
+}
+
+/** True when the photograph sits on the very node the surface control edits. */
+function v3IsSurfaceNode(section,fidelity,photo){
+  if(!photo)return false;
+  var surface=fidelityTarget(section,fidelity.surface,FIDELITY_SURFACE_COMPONENTS)||section.node;
+  return !!surface&&surface===photo;
+}
+
+/**
+ * A default wash follows the brand.
+ *
+ * The wash is the brand's dark, so switching style or editing the palette has to
+ * move it — otherwise a page restyled from navy to forest keeps a navy scrim over
+ * every photograph. Only a wash this code wrote and nobody has touched since is
+ * moved; the moment somebody edits it, the recorded colour stops matching and it
+ * is left alone for good.
+ */
+function v3RefreshPhotoScrim(section,fidelity,applied){
+  var previous=applied.photoScrimColor;
+  if(!previous)return;
+  var scrim=v3DefaultScrim();
+  if(scrim===previous)return;
+  var photo=v3PhotoNode(section);
+  if(!photo)return;
+  if(v3IsSurfaceNode(section,fidelity,photo)){
+    if(cleanText(fidelity.surface.overlay)!==previous)return;
+    fidelity.surface.overlay=scrim;
+  }else{
+    var attrs=photo.attributes||{};
+    if(cleanText(attrs.backgroundOverlay)!==previous)return;
+    attrs.backgroundOverlay=scrim;
+  }
+  applied.photoScrimColor=scrim;
+  v3ToneFromScrim(section,fidelity,photo);
 }
 
 /**
@@ -2753,17 +3232,20 @@ function v3SectionDefaults(section){
  * Only an opaque scrim gets a vote. A 27% tint over a photograph is a tint, and
  * the ground underneath it is still the photograph, so the preset stands.
  */
-function v3BannerToneFromScrim(section,fidelity){
-  var surface=fidelity.surface;
-  if(!surface.overlayEnabled)return;
-  var strength=fidelityOpacity(surface.overlayOpacity,.5);
+function v3ToneFromScrim(section,fidelity,photo){
+  var onSurface=!photo||v3IsSurfaceNode(section,fidelity,photo),
+    settings=onSurface?fidelity.surface:v3NodeScrim(photo);
+  if(!settings||!settings.overlayEnabled)return;
+  var strength=fidelityOpacity(settings.overlayOpacity,.5);
+  // Below this the wash is a tint and the photograph is still the ground; at or
+  // above it the wash *is* the ground and decides the text tone.
   if(strength<BANNER_SCRIM_GROUND_STRENGTH)return;
-  var tone=v2SurfaceTone(surface.overlay,state.project);
+  var tone=v2SurfaceTone(settings.overlay,state.project);
   if(tone==null||tone===!!section.layout.inverted)return;
   section.layout.inverted=tone;
   // The mirrored background colour was written from the preset tone, so it has
   // to move with it or a light section keeps painting itself dark underneath.
-  surface.backgroundColor=tone?fidelityRgba(state.project.design.palette.dark,1):'';
+  if(onSurface)fidelity.surface.backgroundColor=tone?fidelityRgba(state.project.design.palette.dark,1):'';
 }
 
 var ensureSectionSettingsBeforeV3=ensureSectionSettings;
@@ -2795,7 +3277,30 @@ function v3FocusPreviewSection(sectionId,{smooth=true}={}){
       top=Math.max(0,target.getBoundingClientRect().top+view.scrollY-offset-12),
       reduced=view.matchMedia&&view.matchMedia('(prefers-reduced-motion: reduce)').matches,
       still=(Number(state.project.design.motion)||0)<5;
-    view.scrollTo({top:top,behavior:smooth&&!reduced&&!still?'smooth':'auto'});
+    // `auto` is not "instant": it defers to the document's own
+    // `scroll-behavior`, which this page sets to smooth — so the movement-off
+    // path was animating too, and every jump was cancellable.
+    view.scrollTo({top:top,behavior:smooth&&!reduced&&!still?'smooth':'instant'});
+    /*
+     * A smooth scroll is a request, not a result. The stage re-fits the frame
+     * whenever the step changes or the shell is rescaled, and resizing an iframe
+     * mid-animation cancels the scroll outright — so selecting a module within a
+     * beat of switching step left the preview exactly where it was, silently.
+     * One verification, and if the scroll did not land it is made immediately.
+     */
+    var wasAt=view.scrollY;
+    clearTimeout(v3FocusPreviewSection.settle);
+    v3FocusPreviewSection.settle=setTimeout(function(){
+      try{
+        // Only when the animation never started: still exactly where it was, and
+        // that is not where it was asked to go. Anything else — including the
+        // reader having scrolled somewhere themselves in the meantime — is left
+        // alone, because this must not fight a person's own scrolling.
+        if(Math.abs(view.scrollY-wasAt)>2)return;
+        if(Math.abs(view.scrollY-top)<=8)return;
+        if(doc.getElementById(sectionId))view.scrollTo({top:top,behavior:'instant'});
+      }catch(error){}
+    },260);
     doc.querySelectorAll('[data-preview-focus]').forEach(function(node){node.removeAttribute('data-preview-focus')});
     target.setAttribute('data-preview-focus','true');
     clearTimeout(v3FocusPreviewSection.timer);
@@ -3008,7 +3513,7 @@ validateProject=function(){
       ? 'Read '+(brain.understanding.source==='ai'?'by '+(brain.understanding.model||'the AI model'):'by the built-in planner')+' with '+Math.round(Number(brain.understanding.confidence||0)*100)+'% confidence.'
       : 'The AI brief reader has not run. Step 01 can check the brief and recommend an archetype and flow.','AI-READ');
 
-  var flow=DATA.flows.find(function(entry){return entry.id===project.flowId});
+  var flow=flowById(project.flowId,project);
   push(flow?'pass':'warn','Page flow provenance is intact',
     flow?(flow.custom?'Custom outline flow "'+flow.name+'" ('+flow.id+').':'Library flow '+flow.id+' · '+flow.name+'.'):'The saved flow id no longer resolves to a flow in the library.','FLOW');
 
@@ -3083,79 +3588,163 @@ function v4NormalizeConcepts(list){
 }
 
 /**
- * Applies a concept to the design slice only.
+ * Switches the active concept workspace.
  *
- * This is the guarantee behind the V1/V2/V3 pills: `resolveConceptDesign`
- * returns design keys and nothing else, so sections, content, flow, globals and
- * every module edit survive a concept switch untouched.
+ * Nothing is copied in and nothing is captured out. The editor has been writing
+ * into this concept all along, so activating another one is a pointer move: the
+ * design, the page, the globals, the media placements and the responsive settings
+ * that appear are the ones that concept was left with, down to the last field.
+ *
+ * Accepts an index, a slot (`V2`) or an id (`v2`) so both builders and the
+ * concept cards can call it with whatever they hold.
  */
-function v4ApplyConcept(index,options){
-  var simple=v4EnsureSimple(state.project);
-  if(!simple)return;
-  var concept=simple.concepts[index];
-  if(!concept)return;
-  var design=resolveConceptDesign(concept,{
-    archetypeStyle:DATA.archetypeStyles[concept.archetypeKey],
-    current:state.project.design
-  });
-  if(!design)return;
+function v4ApplyConcept(target,options){
+  var conceptId=conceptIdFrom(target);
+  var concept=conceptId?getConcept(state.project,conceptId):null;
+  if(!concept||concept.status!=='generated'){
+    if(conceptId)announce('That concept has not been generated yet.');
+    return;
+  }
   var silent=options&&options.silent;
-  var apply=function(){
-    simple.active=index;
-    // The concept owns the palette again: a lock set by a hand edit on the
-    // previous concept must not survive into this one's colours.
-    state.project.design.paletteLocked=false;
-    state.project.design.paletteSignature='';
-    CONCEPT_DESIGN_KEYS.forEach(function(key){
-      if(design[key]===undefined)return;
-      state.project.design[key]=key==='palette'?Object.assign({},design[key]):design[key];
-    });
-    v3EnsureDesign(state.project);
-  };
-  if(silent){apply();return}
-  mutate(apply,{message:'Concept '+(concept.slot||'V'+(index+1))+' · '+concept.name});
+  if(getActiveConceptId(state.project)===conceptId){
+    // Already here. Still record the pick, because the first step's exit
+    // condition is an explicit choice rather than whatever happens to be shown.
+    if(v4MarkConceptChosen(conceptId)&&!silent){renderAll();queueSave()}
+    return;
+  }
+  setActiveConcept(state.project,conceptId);
+  v4MarkConceptChosen(conceptId);
+  // Typing coalescing belongs to one concept: close the window so the next edit
+  // in this concept opens its own history entry.
+  clearTimeout(inputHistoryTimer);
+  inputHistoryTimer=null;
+  // Switching concepts is not an edit: it must not push a history entry, and it
+  // must not discard either concept's own undo stack.
+  bindProject(state.project);
+  v2EnsureProject(state.project);
+  v3EnsureDesign(state.project);
+  state.project.sections.forEach(syncSectionNode);
+  if(!state.project.sections.some(function(s){return s.id===state.selectedSectionId})){
+    state.selectedSectionId=state.project.sections[0]?state.project.sections[0].id:null;
+  }
+  queueSave();
+  if(silent)return;
+  renderAll();
+  announce(concept.slot+' · '+concept.name);
+}
+
+/** Records the strategist's pick on the simple builder's concept cards. */
+function v4MarkConceptChosen(conceptId){
+  var simple=state.project.simple;
+  if(!simple||!Array.isArray(simple.concepts)||!simple.concepts.length)return false;
+  var index=conceptIndexOf(conceptId);
+  if(index<0||index>=simple.concepts.length)return false;
+  var changed=simple.active!==index;
+  simple.active=index;
+  return changed;
 }
 
 /**
- * A design edit made while a concept is selected belongs to that concept, or
- * toggling away and back would silently discard it.
+ * Builds the three concept workspaces from one baseline.
+ *
+ * All three start as complete copies of the concept currently being edited — the
+ * same content, the same flow, the same media — so a client comparing them is
+ * comparing design decisions and not three different drafts. Each is then turned
+ * into Core, Brand-led or Expressive by resolving its own design.
  */
-function v4CaptureConceptEdit(){
-  if(!v4IsSimple())return;
-  var simple=v4EnsureSimple(state.project);
-  if(!simple||simple.active===null)return;
-  var concept=simple.concepts[simple.active];
-  if(!concept)return;
-  simple.concepts[simple.active]=Object.assign({},conceptFromDesign(state.project.design,{
-    slot:concept.slot,name:concept.name,why:concept.why,preset:concept.preset,
-    // The archetype's own palette and type are the baseline, so only a genuine
-    // hand edit is recorded as an override.
-    archetypeStyle:DATA.archetypeStyles[state.project.design.archetype]
-  }),{archetypeName:DATA.archetypes[state.project.design.archetype]&&DATA.archetypes[state.project.design.archetype].name||state.project.design.archetype,backfilled:concept.backfilled});
+function v4GenerateConceptWorkspaces(descriptors,options){
+  var list=Array.isArray(descriptors)?descriptors:[];
+  if(list.length<2)return [];
+  /*
+   * Re-reading a brief must not silently rebuild three workspaces a strategist
+   * has since edited. The new proposals are still recorded on the concept cards;
+   * taking one is an explicit "Reset to the generated concept" on that slot.
+   */
+  if(hasGeneratedConceptSet(state.project)&&!(options&&options.force))return [];
+  var baseId=getActiveConceptId(state.project)||'v1';
+  var created=generateConceptSet(state.project,{
+    baseConceptId:baseId,
+    variants:list.slice(0,CONCEPT_IDS.length).map(function(descriptor,index){
+      var variant=CONCEPT_VARIANTS[index];
+      return {
+        id:variant.id,
+        name:descriptor&&descriptor.name||variant.name,
+        variantType:variant.variantType,
+        why:descriptor&&descriptor.why||'',
+        style:{archetypeKey:descriptor&&descriptor.archetypeKey||'',preset:descriptor&&descriptor.preset||'',variantType:variant.variantType}
+      };
+    }),
+    applyVariant:function(concept,variant,index){
+      var descriptor=list[index];
+      var design=resolveConceptDesign(descriptor,{
+        archetypeStyle:DATA.archetypeStyles[descriptor&&descriptor.archetypeKey],
+        current:concept.design
+      });
+      if(!design)return;
+      // A palette lock belongs to the hand edit that set it, not to a freshly
+      // generated concept.
+      concept.design.paletteLocked=false;
+      concept.design.paletteSignature='';
+      CONCEPT_DESIGN_KEYS.forEach(function(key){
+        if(design[key]===undefined)return;
+        concept.design[key]=key==='palette'?Object.assign({},design[key]):design[key];
+      });
+    },
+    activate:baseId
+  });
+  // Each workspace is new, so the histories that described the old ones no
+  // longer apply to anything.
+  created.forEach(function(id){conceptHistory.forget(id)});
+  bindProject(state.project);
+  v2EnsureProject(state.project);
+  v3EnsureDesign(state.project);
+  state.project.sections.forEach(syncSectionNode);
+  if(!(options&&options.silent))queueSave();
+  return created;
 }
+
+/**
+ * Kept as a no-op for the call sites that used to snapshot design values back
+ * into a concept before a switch. There is nothing to capture: a design edit is
+ * already a write into the active concept's own `design` object.
+ */
+function v4CaptureConceptEdit(){}
 
 /* ---------------------------------------------------------------- *
  * The concept pills over the preview
  * ---------------------------------------------------------------- */
 
+/**
+ * The V1/V2/V3 switcher.
+ *
+ * It belongs to the project, not to one builder, so it renders in Simple and in
+ * Advanced and on every step where a concept exists. The active concept has to be
+ * unmistakable: a strategist who edits the wrong proposal in front of a client
+ * has been failed by this bar.
+ */
 function v4RenderConceptBar(){
   var bar=byId('conceptBar'),pills=byId('conceptPills'),name=byId('conceptBarName');
   if(!bar||!pills)return;
-  var simple=v4IsSimple()?v4EnsureSimple(state.project):null,concepts=simple?simple.concepts:[];
-  if(!concepts.length){bar.hidden=true;pills.innerHTML='';if(name)name.textContent='';return}
+  var concepts=listGeneratedConcepts(state.project);
+  if(concepts.length<2){bar.hidden=true;pills.innerHTML='';if(name)name.textContent='';return}
+  var activeId=getActiveConceptId(state.project);
   bar.hidden=false;
-  pills.innerHTML=concepts.map(function(concept,index){
-    var active=simple.active===index;
-    return '<button type="button" class="concept-pill'+(active?' is-active':'')+'" data-concept-pill="'+index+'"'+
-      ' aria-pressed="'+(active?'true':'false')+'" title="'+escAttr(concept.name)+'">'+esc(concept.slot||'V'+(index+1))+'</button>';
+  pills.innerHTML=concepts.map(function(concept){
+    var active=concept.id===activeId;
+    var draft=conceptHasDraftChanges(concept);
+    return '<button type="button" class="concept-pill'+(active?' is-active':'')+(draft?' has-draft':'')+'" data-concept-pill="'+escAttr(concept.id)+'"'+
+      ' aria-pressed="'+(active?'true':'false')+'" title="'+escAttr(concept.slot+' · '+concept.name+' — '+conceptPublishLabel(concept))+'">'+esc(concept.slot)+'</button>';
   }).join('');
-  if(name)name.textContent=simple.active===null?'Choose one to continue':concepts[simple.active].name;
+  if(name){
+    var active=getActiveConcept(state.project);
+    name.textContent=active?(active.name+' · '+conceptPublishLabel(active)):'Choose one to continue';
+  }
 }
 
 byId('conceptPills').addEventListener('click',function(event){
   var pill=event.target.closest('[data-concept-pill]');
   if(!pill)return;
-  v4ApplyConcept(Number(pill.dataset.conceptPill));
+  v4ApplyConcept(pill.dataset.conceptPill);
 });
 
 /* ---------------------------------------------------------------- *
@@ -3292,12 +3881,24 @@ document.querySelectorAll('[data-builder-mode]').forEach(function(button){
  * Simple builder · Step 01 — Brief and Direction
  * ---------------------------------------------------------------- */
 
-/** A panel that starts closed. Globals are reference, not the task at hand. */
-function v4ClosedPanel(title,body,meta){
-  return '<details class="panel panel-collapsible"><summary class="panel-head"><h2>'+title+'</h2>'+
+/**
+ * A collapsible panel.
+ *
+ * Step 01 asks for one paragraph and then offers palette, type, the button
+ * family, the presets and nine dials — which is a long scroll past controls
+ * most briefs never touch. Every one of those is now a disclosure, so the step
+ * can be read at a glance and opened where it matters. `open` is the default
+ * because a panel nobody can see is a panel nobody finds; the button family is
+ * the one that starts closed, because the concept already chose one and its ten
+ * live samples are the tallest thing on the step.
+ */
+function v4Panel(title,body,meta,open){
+  return '<details class="panel panel-collapsible"'+(open===false?'':' open')+'><summary class="panel-head"><h2>'+title+'</h2>'+
     (meta?'<small>'+meta+'</small>':'')+'<span class="panel-toggle" aria-hidden="true"></span></summary>'+
     '<div class="panel-body">'+body+'</div></details>';
 }
+/** Globals are reference, not the task at hand, so they start closed. */
+function v4ClosedPanel(title,body,meta){return v4Panel(title,body,meta,false)}
 
 /*
  * The simple builder's callbacks are added to the one shared brain context, not
@@ -3312,6 +3913,9 @@ v3BrainContext=function(){
     buttonStyles:BUTTON_STYLES,
     normalizeConcepts:v4NormalizeConcepts,
     applyConcept:v4ApplyConcept,
+    generateConcepts:v4GenerateConceptWorkspaces,
+    activeConceptId:getActiveConceptId(state.project),
+    concepts:listConcepts(state.project),
     applyBriefFields:v4ApplyBriefFields,
     builderMode:v4Mode()
   });
@@ -3327,18 +3931,23 @@ function v4SimpleBrief(){
   // typeface names one this select can actually offer.
   var fonts=fontOptions();
   var brainPanel=v3BrainPanel(function(){return briefBrainFeature.renderSimpleBriefPanel(v4SimpleContext())});
+  var stylePicker=v10StylePicker({
+    title:'What style would you like for this project?',
+    blurb:'Pick a family, then one of its five styles. The three concepts are built from the style you choose: V1 as it is authored, V2 with your brand colours, V3 pushed further in the same language.'
+  });
 
   return pageHead('01 · Brief and Direction','Write the brief. Get three concepts.','One paragraph is all the brain needs. It reads your brief, then designs three complete concepts — palette, type, spacing, movement and buttons — that you can switch between at any point using the pills on the preview.',v4ModeBadge())+
     brainPanel+
-    panel('Palette and type','<div class="panel-note">The chosen concept sets these. Adjust anything and it stays with that concept — switching away and back keeps your edit.</div><div class="palette-row">'+
+    stylePicker+
+    v4Panel('Palette and type','<div class="panel-note">The chosen style sets these. Adjust anything and it stays with that concept — switching away and back keeps your edit.</div><div class="palette-row">'+
       [['bg','Canvas'],['ink','Ink'],['accent','Accent'],['soft','Soft'],['dark','Dark']].map(function(x){
         return '<label class="color-field"><input type="color" data-bind="design.palette.'+x[0]+'" value="'+escAttr(d.palette[x[0]])+'"><span>'+x[1]+'</span></label>';
       }).join('')+'</div>'+v9PaletteHealth(d)+'<div class="field-grid" style="margin-top:16px">'+
       field('Body typeface','design.fontBody',d.fontBody,{type:'select',options:fonts})+
       field('Display typeface','design.fontDisplay',d.fontDisplay,{type:'select',options:fonts})+'</div>','From the concept')+
-    panel('Button family','<div class="panel-note">Hover any sample to see exactly what a visitor will see.</div>'+v3ButtonStylePanel(d),'Primary · Secondary · Link')+
-    panel('Quick styles',v3PresetButtons(d),'Safe starting points')+
-    panel('Design dials',v3DialSample(d)+v3DialGroups(d),'Live system controls · every slider updates the whole site')+
+    v4Panel('Button family','<div class="panel-note">Hover any sample to see exactly what a visitor will see.</div>'+v3ButtonStylePanel(d),buttonStyle(d.buttonStyle).label+' · open to change it',false)+
+    v4Panel('Quick styles',v3PresetButtons(d),'Safe starting points')+
+    v4Panel('Design dials',v3DialSample(d)+v3DialGroups(d),'Live system controls · every slider updates the whole site')+
     v4ClosedPanel('Navigation and footer',v2GlobalEditors(),'Optional · global parts')+
     renderEditorNav();
 }
@@ -3355,7 +3964,7 @@ function v4ModeBadge(){
 
 function v4SimpleFlow(){
   v2EnsureProject(state.project);
-  var flow=DATA.flows.find(function(f){return f.id===state.project.flowId})||DATA.flows[0];
+  var flow=flowById(state.project.flowId)||FLOW_CATALOG[0];
   return pageHead('02 · Page flow','Choose the sequence.','The brain ranked every flow in the library against your brief. Pick one of the five recommendations, or describe the page you want in your own words.',flow.id+' · '+flow.name)+
     v3BrainPanel(function(){return briefBrainFeature.renderSimpleFlowPanel(v4SimpleContext())})+
     renderEditorNav();
@@ -3399,6 +4008,7 @@ function v4SimpleReview(){
   var validation=validateProject(),simple=v4EnsureSimple(state.project);
   var concept=simple&&simple.active!==null?simple.concepts[simple.active]:null;
   return pageHead('04 · Review & export','WordPress-ready handoff.','The Simple and Advanced builders now export through the exact same page, navigation, footer and standalone-site pipeline. Download the individual artifacts or one complete ZIP.',validation.failures?validation.failures+' blockers':validation.warnings?validation.warnings+' notes':'Ready')+
+    v5ConceptsPanel()+
     panel('Concept health','<div class="review-grid">'+
       '<div class="score-card"><b>'+validation.score+'</b><span>Readiness score</span></div>'+ 
       '<div class="score-card"><b>'+state.project.sections.length+'</b><span>Page sections</span></div>'+ 
@@ -3417,6 +4027,377 @@ function v4SimpleReview(){
       'Simple and Advanced use one export contract')+
     panel('Continue in Advanced','<div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/></svg></div><div><b>Concept JSON</b><p>Optional editing handoff containing your brief, all three concepts and the current project state.</p></div><button class="export-btn" data-export="simple-concept">Download JSON</button></div>','Optional')+
     renderEditorNav();
+}
+
+/* ---------------------------------------------------------------- *
+ * The style library
+ * ---------------------------------------------------------------- */
+
+/** The style the active concept is resolving its design from, if any. */
+function v10ActiveStyle(){
+  var concept=getActiveConcept(state.project);
+  return concept?styleFromRef(concept.style):null;
+}
+
+function v10ConceptStyle(concept){
+  return concept?styleFromRef(concept.style):null;
+}
+
+/** What the strategist last browsed. Editor state, not project state. */
+function v10SelectedFamily(){
+  if(state.styleFamilyId&&STYLE_FAMILIES.some(function(f){return f.id===state.styleFamilyId}))return state.styleFamilyId;
+  var active=v10ActiveStyle();
+  return active?active.familyId:'';
+}
+
+/**
+ * Applies a style to one concept.
+ *
+ * The style is recorded on the concept and the design is compiled from it, so the
+ * concept keeps a reference to *why* it looks the way it does rather than only the
+ * resolved values. Manual edits already made on that concept are re-applied last,
+ * which is the precedence rule in §41: a strategist's own change is never undone
+ * by re-resolving a style.
+ */
+function v10ApplyStyleToConcept(concept,profile,options){
+  if(!concept||!profile)return false;
+  var config=options||{};
+  var variantType=CONCEPT_VARIANT_TYPES.indexOf(config.variantType)>=0?config.variantType:(concept.variantType||'core');
+  var directives=briefDirectives(state.project.brief);
+  var design=compileStyle(profile,{
+    variantType:variantType,
+    brand:directives.any?directives:null,
+    manual:config.keepManual===false?null:(concept.manualOverrides||null),
+    current:concept.design
+  });
+  if(!design)return false;
+  concept.design=design;
+  concept.style={
+    familyId:profile.familyId,
+    styleId:profile.id,
+    styleVersion:profile.version,
+    variantType:variantType,
+    archetypeKey:'',
+    preset:''
+  };
+  touchConcept(concept);
+  return true;
+}
+
+/** Re-lays every section in a concept using the style's component recipes. */
+function v10RestyleSections(concept,profile){
+  if(!concept||!profile||!Array.isArray(concept.sections))return;
+  concept.sections.forEach(function(section,index){
+    var base=sectionPreset(section.family,index);
+    var recipe=compileSectionRecipe(profile,section.family,{base:base});
+    ensureSectionSettings(section);
+    section.layout=section.layout||{};
+    if(recipe.container)section.layout.container=recipe.container;
+    if(recipe.paddingTop)section.layout.paddingTop=recipe.paddingTop;
+    if(recipe.paddingBottom)section.layout.paddingBottom=recipe.paddingBottom;
+    if(recipe.inverted!==undefined)section.layout.inverted=recipe.inverted;
+    if(recipe.viewport!==undefined){section.effects=section.effects||{};section.effects.viewport=recipe.viewport}
+    if(recipe.decoration)section.decoration=recipe.decoration;
+    if(recipe.styleColumns){
+      if(recipe.styleColumns.desktop)section.layout.columns=recipe.styleColumns.desktop;
+      if(recipe.styleColumns.mobile)section.layout.columnsMobile=recipe.styleColumns.mobile;
+    }
+  });
+}
+
+/** The strategist chose a style for the concept on screen. */
+function v10ChooseStyle(key,options){
+  var profile=styleByKey(key);
+  if(!profile){announce('That style is not in the library.');return}
+  var concept=getActiveConcept(state.project);
+  if(!concept)return;
+  var config=options||{};
+  var swapped=0;
+  mutate(function(){
+    v10ApplyStyleToConcept(concept,profile,{variantType:concept.variantType});
+    // Patterns first: `switchPattern` rebuilds the block tree from the new
+    // pattern, so the style's own layout has to be written on top of that.
+    swapped=v10RepatternSections(concept,profile);
+    v10RestyleSections(concept,profile);
+    v3EnsureDesign(state.project);
+  },{message:concept.slot+' · '+profile.name+(swapped?' · '+swapped+' module'+(swapped===1?'':'s')+' re-chosen':'')});
+  if(config.thenGenerate)v10GenerateFromStyle(key);
+}
+
+/**
+ * Builds the three concepts from one chosen style.
+ *
+ * All three derive from the same style profile so a client is comparing
+ * interpretations of one design language rather than three unrelated websites:
+ * V1 as authored, V2 with the client's brand let in as far as the style allows,
+ * V3 pushing the axes the style is already expressive on.
+ */
+function v10GenerateFromStyle(key,options){
+  var profile=styleByKey(key);
+  if(!profile)return [];
+  var config=options||{};
+  var created=[];
+  mutate(function(){
+    created=generateConceptSet(state.project,{
+      baseConceptId:getActiveConceptId(state.project)||'v1',
+      variants:CONCEPT_VARIANTS.map(function(variant){
+        return {
+          id:variant.id,
+          name:variant.name,
+          variantType:variant.variantType,
+          why:v10VariantWhy(profile,variant.variantType),
+          style:{familyId:profile.familyId,styleId:profile.id,styleVersion:profile.version,variantType:variant.variantType}
+        };
+      }),
+      applyVariant:function(concept,variant){
+        v10ApplyStyleToConcept(concept,profile,{variantType:variant.variantType,keepManual:false});
+        v10RepatternSections(concept,profile);
+        v10RestyleSections(concept,profile);
+      },
+      activate:'v1'
+    });
+    created.forEach(function(id){conceptHistory.forget(id)});
+    bindProject(state.project);
+    v2EnsureProject(state.project);
+    v3EnsureDesign(state.project);
+    state.project.sections.forEach(syncSectionNode);
+  },{message:'Three concepts from '+profile.name});
+  if(!(config&&config.silent))v4MarkConceptChosen('v1');
+  return created;
+}
+
+/** Why this slot looks the way it does, in a sentence a client can read. */
+function v10VariantWhy(profile,variantType){
+  var rule=variantRule(variantType);
+  if(variantType==='brand-led')return 'The '+profile.name+' language with your brand colours taken as far as this style allows.';
+  if(variantType==='expressive')return profile.name+', pushed on the axes it is already strongest on — scale, movement and expression.';
+  return profile.name+' as it is authored: '+String(profile.description||'').slice(0,150);
+}
+
+/* ---- the picker ---- */
+
+function v10StyleCardMarkup(profile,activeKey){
+  var key=styleKey(profile);
+  var active=key===activeKey;
+  var swatches=['bg','ink','accent','soft','dark'].map(function(role){
+    return '<i style="background:'+escAttr(profile.palette[role])+'"></i>';
+  }).join('');
+  return '<button type="button" class="style-card'+(active?' is-active':'')+'" data-style-key="'+escAttr(key)+'"'+
+    ' aria-pressed="'+(active?'true':'false')+'">'+
+    '<span class="style-card__swatches" aria-hidden="true">'+swatches+'</span>'+
+    '<b>'+esc(profile.name)+'</b>'+
+    '<p>'+esc(profile.description)+'</p>'+
+    '<span class="style-card__meta"><em>'+esc(profile.polarity)+'</em>'+
+    profile.tags.slice(0,3).map(function(tag){return '<span>'+esc(tag)+'</span>'}).join('')+'</span>'+
+    (active?'<span class="style-card__active">In use</span>':'')+
+    '</button>';
+}
+
+/**
+ * Family, then style. The AI recommends and the human chooses (§17): a badge can
+ * mark a strong match but nothing is selected without a click.
+ */
+function v10StylePicker(options){
+  var config=options||{};
+  var activeStyle=v10ActiveStyle();
+  var activeKey=activeStyle?styleKey(activeStyle):'';
+  var familyId=v10SelectedFamily();
+  var counts=styleCounts();
+  var families=styleFamilies();
+  var familyButtons=families.map(function(family){
+    var selected=family.id===familyId;
+    return '<button type="button" class="style-family'+(selected?' is-active':'')+'" data-style-family="'+escAttr(family.id)+'"'+
+      ' aria-pressed="'+(selected?'true':'false')+'"><b>'+esc(family.name)+'</b><span>'+esc(family.blurb)+'</span>'+
+      '<em>'+family.styles.length+' styles</em></button>';
+  }).join('');
+  var chosenFamily=families.find(function(family){return family.id===familyId})||null;
+  var styleGrid=chosenFamily
+    ? '<div class="style-grid">'+chosenFamily.styles.map(function(profile){return v10StyleCardMarkup(profile,activeKey)}).join('')+'</div>'
+    : '<div class="panel-note">Choose a style family to see its five styles.</div>';
+  var generate=chosenFamily&&activeStyle&&activeStyle.familyId===familyId
+    ? '<div class="style-actions"><button type="button" class="export-btn" data-style-action="generate">'+
+      (hasGeneratedConceptSet(state.project)?'Rebuild V1/V2/V3 from '+esc(activeStyle.name):'Generate V1/V2/V3 from '+esc(activeStyle.name))+
+      '</button><span class="panel-note" style="margin:0">V1 as authored · V2 with your brand colours · V3 pushed further, in the same language.</span></div>'
+    : '';
+  return panel(config.title||'Style family',
+    '<div class="panel-note">'+esc(config.blurb||'Ten families, five styles each. A style sets the palette, the type, all nine dials, how each band is composed and which of the 154 patterns the builder reaches for.')+'</div>'+
+    '<div class="style-families">'+familyButtons+'</div>'+
+    (chosenFamily?'<div class="style-family-head"><b>'+esc(chosenFamily.name)+'</b><span>'+esc(chosenFamily.blurb)+'</span></div>':'')+
+    styleGrid+generate,
+    counts.families+' families · '+counts.styles+' styles');
+}
+
+/** The style row on a review or concept panel. */
+function v10StyleLabel(concept){
+  var profile=v10ConceptStyle(concept);
+  if(profile)return profile.familyId+' → '+profile.name;
+  return '';
+}
+
+byId('editorInner').addEventListener('click',function(event){
+  var family=event.target.closest('[data-style-family]');
+  if(family){
+    state.styleFamilyId=family.dataset.styleFamily;
+    renderEditor();
+    return;
+  }
+  var card=event.target.closest('[data-style-key]');
+  if(card){
+    v10ChooseStyle(card.dataset.styleKey);
+    return;
+  }
+  var action=event.target.closest('[data-style-action]');
+  if(action&&action.dataset.styleAction==='generate'){
+    var active=v10ActiveStyle();
+    if(!active){announce('Choose a style first.');return}
+    if(hasGeneratedConceptSet(state.project)
+      &&!window.confirm('Rebuild all three concepts from '+active.name+'? Every change made to V1, V2 and V3 is replaced.'))return;
+    v10GenerateFromStyle(styleKey(active));
+    renderAll();
+  }
+});
+
+/* ---------------------------------------------------------------- *
+ * The concept workspaces panel
+ * ---------------------------------------------------------------- */
+
+/*
+ * Icons for the concept row.
+ *
+ * Open is an arrow leaving a frame, reset is a counter-clockwise turn back to the
+ * start, and copy reuses the editor's own copy glyph with the destination slot
+ * beside it — so "copy into V2" reads off the button rather than out of a tooltip.
+ */
+var CONCEPT_ICONS={
+  open:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+  reset:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v5h5"/><path d="M4.9 10.4A7.5 7.5 0 1 1 4.2 14"/></svg>',
+  copy:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10" height="10" rx="1"/><path d="M15 9V6a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h3"/></svg>'
+};
+
+/**
+ * One icon action on a concept row.
+ *
+ * `data-tip` draws the hover label and `aria-label` is the accessible name; both
+ * carry the same sentence, so what a pointer reveals and what a screen reader
+ * announces cannot drift apart.
+ */
+function v5ConceptAction(action,conceptId,options){
+  var config=options||{};
+  return '<button type="button" class="concept-action" data-concept-action="'+escAttr(action)+'"'+
+    ' data-concept-id="'+escAttr(conceptId)+'"'+
+    (config.target?' data-concept-target="'+escAttr(config.target)+'"':'')+
+    ' data-tip="'+escAttr(config.tip)+'" aria-label="'+escAttr(config.tip)+'">'+
+    CONCEPT_ICONS[config.icon||action]+
+    (config.label?'<b>'+esc(config.label)+'</b>':'')+
+    '</button>';
+}
+
+/** What a concept currently resolves its design from, in plain language. */
+function v5ConceptStyleLabel(concept){
+  var style=concept.style||{};
+  var fromLibrary=v10StyleLabel(concept);
+  if(fromLibrary)return fromLibrary;
+  if(style.familyId&&style.styleId)return style.familyId+' → '+style.styleId;
+  var key=(concept.design&&concept.design.archetype)||style.archetypeKey||'';
+  var archetype=DATA.archetypes[key];
+  return archetype?(key+' — '+archetype.name):(key||'Custom');
+}
+
+/**
+ * One row per concept workspace, in both builders.
+ *
+ * Every control here operates on one concept and says which. The two that can
+ * discard work — reset and copy — confirm first, because §102's rule is that a
+ * concept is never reset except on purpose.
+ */
+function v5ConceptsPanel(){
+  var concepts=listGeneratedConcepts(state.project);
+  if(!concepts.length)return '';
+  /*
+   * One concept still gets a row.
+   *
+   * A strategist working in Advanced before generating the set still needs to see
+   * which style the page is on and be able to reset it. Showing only an
+   * explanation would answer a question they did not ask and hide the one they did.
+   */
+  var incomplete=concepts.length<CONCEPT_IDS.length;
+  var activeId=getActiveConceptId(state.project);
+  var rows=concepts.map(function(concept){
+    var active=concept.id===activeId;
+    var targets=concepts.filter(function(other){return other.id!==concept.id});
+    return '<div class="concept-row'+(active?' is-active':'')+'" data-concept-row="'+escAttr(concept.id)+'">'+
+      '<div class="concept-row__id"><b>'+esc(concept.slot)+'</b><span>'+esc(concept.name)+'</span></div>'+
+      '<dl class="concept-row__facts">'+
+        '<div><dt>Design source</dt><dd>'+esc(v5ConceptStyleLabel(concept))+'</dd></div>'+
+        '<div><dt>Variation</dt><dd>'+esc(concept.variantType)+'</dd></div>'+
+        '<div><dt>Modules</dt><dd>'+(concept.sections||[]).length+'</dd></div>'+
+        '<div><dt>Revision</dt><dd>'+esc(String(concept.revision))+'</dd></div>'+
+      '</dl>'+
+      '<div class="concept-row__actions">'+
+        (active
+          ? '<span class="concept-row__here">Editing this one</span>'
+          : v5ConceptAction('open',concept.id,{tip:'Open '+concept.slot,label:concept.slot}))+
+        (concept.generatedFrom
+          ? v5ConceptAction('reset',concept.id,{tip:'Reset '+concept.slot+' to generated'})
+          : '')+
+        targets.map(function(target){
+          return v5ConceptAction('copy',concept.id,{
+            target:target.id,
+            icon:'copy',
+            label:target.slot,
+            tip:'Copy '+concept.slot+' over '+target.slot
+          });
+        }).join('')+
+      '</div></div>';
+  }).join('');
+  return panel('Concept workspaces',
+    '<div class="panel-note">'+(incomplete
+      ? 'This project has '+concepts.length+' of '+CONCEPT_IDS.length+' concept workspaces. Choose a style in Step 02 and generate V1, V2 and V3 to get three independently editable proposals from it.'
+      : 'Three independently editable proposals. Each owns its own style, design dials, page flow, modules, media placements, navigation and footer; the brief and the media library are shared. Exports always come from the concept you are editing.')+'</div>'+
+    '<div class="concept-rows">'+rows+'</div>'+
+    '<div class="export-card"><div class="export-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16v12H4zM8 10h8M8 14h5"/></svg></div>'+
+    '<div><b>All-concepts archive</b><p>One ZIP with a folder per concept, each holding that concept\'s navigation.json, footer.json, page.json and website.html. For handoff and record — WordPress imports one concept at a time.</p></div>'+
+    '<button class="export-btn" data-export="all-concepts">Download</button></div>',
+    esc(getActiveConcept(state.project)?getActiveConcept(state.project).slot+' active':''));
+}
+
+byId('editorInner').addEventListener('click',function(event){
+  var trigger=event.target.closest('[data-concept-action]');
+  if(!trigger)return;
+  var action=trigger.dataset.conceptAction,conceptId=trigger.dataset.conceptId;
+  var concept=getConcept(state.project,conceptId);
+  if(!concept)return;
+  if(action==='open'){v4ApplyConcept(conceptId);return}
+  if(action==='reset'){
+    if(!window.confirm('Reset '+concept.slot+' to the concept it was generated as? Every change made to '+concept.slot+' is discarded. The other concepts are untouched.'))return;
+    if(!resetConcept(state.project,conceptId)){announce('That concept has no generated version to reset to.');return}
+    conceptHistory.forget(conceptId);
+    v5SettleActiveConcept();
+    renderAll();queueSave();updateUndoButtons();
+    announce(concept.slot+' reset to its generated design');
+    return;
+  }
+  if(action==='copy'){
+    var target=getConcept(state.project,trigger.dataset.conceptTarget);
+    if(!target)return;
+    if(!window.confirm('Copy '+concept.slot+' over '+target.slot+'? Everything currently in '+target.slot+' is replaced. Its public link and publish state are not copied.'))return;
+    if(!duplicateConcept(state.project,conceptId,target.id)){announce('That concept could not be copied.');return}
+    conceptHistory.forget(target.id);
+    v5SettleActiveConcept();
+    renderAll();queueSave();updateUndoButtons();
+    announce(concept.slot+' copied into '+target.slot);
+  }
+});
+
+/** Re-derives everything that hangs off the active concept after it changes. */
+function v5SettleActiveConcept(){
+  bindProject(state.project);
+  v2EnsureProject(state.project);
+  v3EnsureDesign(state.project);
+  state.project.sections.forEach(syncSectionNode);
+  if(!state.project.sections.some(function(s){return s.id===state.selectedSectionId})){
+    state.selectedSectionId=state.project.sections[0]?state.project.sections[0].id:null;
+  }
 }
 
 /* ---------------------------------------------------------------- *
@@ -3540,7 +4521,7 @@ function v4RestoreImportedProject(payload,page,globals,simplePayload){
   if(payload.stockMedia&&typeof payload.stockMedia==='object')project.media=deepClone(payload.stockMedia);
   var flowId=cleanText(page.flow&&page.flow.id);
   if(Array.isArray(payload.customFlows))project.customFlows=deepClone(payload.customFlows);
-  if(flowId&&DATA.flows.some(function(flow){return flow.id===flowId}))project.flowId=flowId;
+  if(flowId&&flowExists(flowId,project))project.flowId=flowId;
   if(globals&&globals.navigation&&globals.navigation.nav)project.header=v4HeaderFromExport(globals.navigation,project.header);
   if(globals&&globals.footer&&globals.footer.footer)project.footer=v4FooterFromExport(globals.footer,project.footer);
   if(payload.concept&&payload.concept.design)v4DesignFromExport(payload.concept.design);
@@ -4450,6 +5431,36 @@ var V6_HIDE_MS=140;
 
 var v6Hud=null,v6HoverId='',v6HideTimer=null,v6Frame=0,v6BoundDoc=null;
 
+/**
+ * The header and the footer, addressed the same way a module is.
+ *
+ * The overlay identifies its target by id. Neither global part has a project
+ * id — there is exactly one of each — so they use two reserved sentinels. What
+ * a "pattern" is for them is their layout variant, which is why stepping them
+ * needs no new interaction: the same arrows, the same keys, the same in-place
+ * repaint.
+ */
+var V6_HEADER='@header',V6_FOOTER='@footer';
+function v6ChromeKind(id){return id===V6_HEADER?'header':id===V6_FOOTER?'footer':''}
+function v6ChromePart(kind){
+  if(kind==='header')return {
+    kind:'header',selector:'.site-header',label:'Global navigation',badge:'NAV',catalog:HEADER_VARIANTS,
+    value:function(){return headerVariant(state.project.header.variant)},
+    set:function(value){state.project.header.variant=headerVariant(value)},
+    render:function(){return renderHeader(state.project)}
+  };
+  if(kind==='footer')return {
+    kind:'footer',selector:'.site-footer',label:'Global footer',badge:'FTR',catalog:FOOTER_VARIANTS,
+    value:function(){return footerVariant(state.project.footer.variant)},
+    set:function(value){state.project.footer.variant=footerVariant(value)},
+    render:function(){return renderFooter(state.project)}
+  };
+  return null;
+}
+function v6VariantEntry(part){
+  var value=part.value();
+  return part.catalog.filter(function(entry){return entry.value===value})[0]||part.catalog[0];
+}
 function v6PatternPool(family){return DATA.patterns.filter(function(p){return p.family===family})}
 function v6Section(id){return state.project.sections.find(function(s){return s.id===id})||null}
 function v6VisibleSections(){return state.project.sections.filter(function(s){return s.visible!==false})}
@@ -4475,13 +5486,10 @@ function v6BuildHud(){
         '<span class="pv-hud__copy"><b></b><span></span></span>'+
         '<span class="pv-hud__count"></span>'+
       '</div>'+
-      '<div class="pv-hud__tools">'+
-        '<button type="button" class="pv-hud__tool" data-pv="browse">Browse all</button>'+
-        '<button type="button" class="pv-hud__tool -primary" data-pv="edit">Edit module</button>'+
-      '</div>'+
+      '<div class="pv-hud__tools"></div>'+
       '<button type="button" class="pv-hud__arrow -prev" data-pv="prev" aria-label="Previous pattern">'+ICONS.arrow+'</button>'+
       '<button type="button" class="pv-hud__arrow -next" data-pv="next" aria-label="Next pattern">'+ICONS.arrow+'</button>'+
-      '<span class="pv-hud__hint">← → to switch pattern</span>'+
+      '<span class="pv-hud__hint"></span>'+
     '</div>';
   host.appendChild(root);
 
@@ -4494,10 +5502,13 @@ function v6BuildHud(){
     var trigger=event.target.closest('[data-pv]');
     if(!trigger||!v6HoverId)return;
     event.preventDefault();
-    if(trigger.dataset.pv==='prev')v6Step(v6HoverId,-1);
-    else if(trigger.dataset.pv==='next')v6Step(v6HoverId,1);
-    else if(trigger.dataset.pv==='browse'){v6Select(v6HoverId);openPatternModal('change')}
-    else if(trigger.dataset.pv==='edit'){v6Select(v6HoverId);goStep(v4IsSimple()?2:3)}
+    var action=trigger.dataset.pv;
+    if(action==='prev')v6Step(v6HoverId,-1);
+    else if(action==='next')v6Step(v6HoverId,1);
+    else if(action==='browse'){v6Select(v6HoverId);openPatternModal('change')}
+    else if(action==='edit'){v6Select(v6HoverId);goStep(v4IsSimple()?2:3)}
+    else if(action==='mobile')v6StepMobileMenu();
+    else if(action==='globals')v6OpenGlobals(v6ChromeKind(v6HoverId));
   });
 
   v6Hud={
@@ -4506,6 +5517,8 @@ function v6BuildHud(){
     pattern:root.querySelector('.pv-hud__copy b'),
     family:root.querySelector('.pv-hud__copy span'),
     count:root.querySelector('.pv-hud__count'),
+    tools:root.querySelector('.pv-hud__tools'),
+    hint:root.querySelector('.pv-hud__hint'),
     prev:root.querySelector('.pv-hud__arrow.-prev'),
     next:root.querySelector('.pv-hud__arrow.-next')
   };
@@ -4525,7 +5538,8 @@ function v6Geometry(sectionId){
   if(!hud||!frame||!stage)return null;
   var doc=null;
   try{doc=frame.contentDocument}catch(error){return null}
-  var target=doc&&doc.getElementById(sectionId);
+  var chrome=v6ChromeKind(sectionId),
+    target=doc&&(chrome?doc.querySelector(v6ChromePart(chrome).selector):doc.getElementById(sectionId));
   if(!target)return null;
   var box=target.getBoundingClientRect(),
     frameBox=frame.getBoundingClientRect(),
@@ -4552,17 +5566,9 @@ function v6Geometry(sectionId){
   };
 }
 
-/** Draws the overlay over `sectionId`, or hides it when the module cannot be measured. */
-function v6Paint(sectionId){
-  var hud=v6BuildHud(),section=v6Section(sectionId);
-  if(!hud)return;
-  if(!section){v6Hide();return}
-  var geometry=v6Geometry(sectionId);
-  if(!geometry){v6Hide();return}
-  var pool=v6PatternPool(section.family),
-    position=pool.findIndex(function(p){return p.id===section.patternId}),
-    order=v6VisibleSections().indexOf(section),
-    host=document.querySelector('.preview'),
+/** Places the overlay's frame over a measured box, clipped to the stage. */
+function v6Place(hud,geometry){
+  var host=document.querySelector('.preview'),
     hostBox=host?host.getBoundingClientRect():null;
   // The overlay is laid over the stage exactly, so anything drawn outside the
   // stage — a module scrolled half out of view — is clipped rather than
@@ -4579,14 +5585,62 @@ function v6Paint(sectionId){
   hud.frame.style.height=Math.round(geometry.height)+'px';
   hud.frame.style.setProperty('--pv-bar',Math.round(geometry.barTop)+'px');
   hud.frame.style.setProperty('--pv-centre',Math.round(geometry.centre)+'px');
+}
+
+/** Draws the overlay over `id`, or hides it when the target cannot be measured. */
+function v6Paint(id){
+  var hud=v6BuildHud();
+  if(!hud)return;
+  var chrome=v6ChromeKind(id),section=chrome?null:v6Section(id);
+  if(!chrome&&!section){v6Hide();return}
+  var geometry=v6Geometry(id);
+  if(!geometry){v6Hide();return}
+  v6Place(hud,geometry);
+  if(chrome){
+    var part=v6ChromePart(chrome),
+      entry=v6VariantEntry(part),
+      at=part.catalog.map(function(item){return item.value}).indexOf(entry.value),
+      menu=mobileMenuStyle(state.project.header.mobileMenu),
+      menuEntry=MOBILE_MENU_STYLES.filter(function(item){return item.value===menu})[0]||MOBILE_MENU_STYLES[0];
+    hud.index.textContent=part.badge;
+    hud.pattern.textContent=entry.label;
+    hud.family.textContent=part.label;
+    hud.count.textContent=(at<0?1:at+1)+' / '+part.catalog.length;
+    hud.tools.innerHTML=(chrome==='header'
+      ?'<button type="button" class="pv-hud__tool" data-pv="mobile" title="'+escAttr(menuEntry.note)+'">Mobile menu · '+esc(menuEntry.short)+'</button>'
+      :'')+
+      '<button type="button" class="pv-hud__tool -primary" data-pv="globals">Edit '+(chrome==='header'?'navigation':'footer')+'</button>';
+    hud.hint.textContent='← → to switch '+(chrome==='header'?'navigation':'footer')+' layout';
+    hud.prev.disabled=false;
+    hud.next.disabled=false;
+    hud.root.classList.remove('is-single');
+    hud.root.classList.add('is-chrome');
+    // The navigation is 80-odd pixels tall and every one of them is a control —
+    // logo, links, the action, the burger. The overlay's own buttons therefore
+    // sit outside it rather than on top of it, and which side "outside" is
+    // depends on which part this is.
+    hud.root.classList.toggle('is-header',chrome==='header');
+    hud.root.classList.toggle('is-footer',chrome==='footer');
+    hud.root.hidden=false;
+    return;
+  }
+  var pool=v6PatternPool(section.family),
+    position=pool.findIndex(function(p){return p.id===section.patternId}),
+    order=v6VisibleSections().indexOf(section);
   hud.index.textContent=String((order<0?0:order)+1).padStart(2,'0');
   hud.pattern.textContent=patternLabel(section);
   hud.family.textContent=familyLabels[section.family]||section.family;
   hud.count.textContent=(position<0?1:position+1)+' / '+pool.length;
+  hud.tools.innerHTML='<button type="button" class="pv-hud__tool" data-pv="browse">Browse all</button>'+
+    '<button type="button" class="pv-hud__tool -primary" data-pv="edit">Edit module</button>';
+  hud.hint.textContent='← → to switch pattern';
   var single=pool.length<2;
   hud.prev.disabled=single;
   hud.next.disabled=single;
   hud.root.classList.toggle('is-single',single);
+  hud.root.classList.remove('is-chrome');
+  hud.root.classList.remove('is-header');
+  hud.root.classList.remove('is-footer');
   hud.root.hidden=false;
 }
 
@@ -4617,7 +5671,7 @@ function v6Track(){
 }
 
 function v6Select(sectionId){
-  if(!sectionId||state.selectedSectionId===sectionId)return;
+  if(!sectionId||v6ChromeKind(sectionId)||state.selectedSectionId===sectionId)return;
   state.selectedSectionId=sectionId;
   state.editorTab='content';
   queueSave();
@@ -4679,8 +5733,79 @@ function v6QueueEditorSync(){
   });
 }
 
+/**
+ * Repaints a global part inside the live preview document.
+ *
+ * The header carries behaviour that was bound when the document loaded — the
+ * sticky class, the announcement dismiss, the burger — so the replacement is
+ * handed to `__sbsBind`, which re-binds the chrome as well as the modules.
+ */
+function v6RepaintChrome(part){
+  var frame=byId('sitePreview'),doc=null,view=null;
+  try{doc=frame&&frame.contentDocument;view=frame&&frame.contentWindow}catch(error){return false}
+  var current=doc&&doc.querySelector(part.selector);
+  if(!current||!current.parentNode)return false;
+  var holder=doc.createElement('div');
+  try{holder.innerHTML=part.render()}catch(error){return false}
+  var next=holder.firstElementChild;
+  if(!next)return false;
+  current.replaceWith(next);
+  if(view&&typeof view.__sbsBind==='function'){
+    try{view.__sbsBind(next,{reveal:true})}catch(error){/* a torn-down frame is not an error */}
+  }
+  return true;
+}
+
+/** Steps the header or the footer to the next or previous registered layout. */
+function v6StepChrome(kind,delta){
+  var part=v6ChromePart(kind);
+  if(!part)return;
+  var values=part.catalog.map(function(entry){return entry.value}),
+    at=values.indexOf(part.value()),
+    next=values[(((at<0?0:at)+delta)%values.length+values.length)%values.length];
+  if(!next||next===part.value())return;
+  inputCheckpoint();
+  part.set(next);
+  queueSave();
+  if(!v6RepaintChrome(part))queuePreview();
+  v6Paint(kind==='header'?V6_HEADER:V6_FOOTER);
+  v6QueueEditorSync();
+  announce(part.label+': '+v6VariantEntry(part).label);
+}
+
+/** Cycles the phone takeover style, from the navigation's own overlay. */
+function v6StepMobileMenu(){
+  var order=MOBILE_MENU_STYLES.map(function(entry){return entry.value}),
+    at=order.indexOf(mobileMenuStyle(state.project.header.mobileMenu)),
+    next=order[((at<0?0:at)+1)%order.length];
+  inputCheckpoint();
+  state.project.header.mobileMenu=next;
+  queueSave();
+  // The takeover is painted by the document stylesheet, not by the header
+  // markup, so this one needs the rebuild rather than an in-place swap.
+  queuePreview();
+  v6Paint(V6_HEADER);
+  v6QueueEditorSync();
+  announce('Mobile menu: '+(MOBILE_MENU_STYLES.filter(function(entry){return entry.value===next})[0]||{}).label);
+}
+
+/** Hands the strategist to the editors for whichever part they were hovering. */
+function v6OpenGlobals(kind){
+  if(!kind)return;
+  goStep(0);
+  requestAnimationFrame(function(){
+    var target=document.querySelector('[data-global-part="'+kind+'"]');
+    if(!target)return;
+    var collapsed=target.closest('details.panel-collapsible');
+    if(collapsed)collapsed.open=true;
+    target.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+}
+
 /** Steps a module to the next or previous registered pattern in its own family. */
 function v6Step(sectionId,delta){
+  var chrome=v6ChromeKind(sectionId);
+  if(chrome){v6StepChrome(chrome,delta);return}
   var section=v6Section(sectionId);
   if(!section)return;
   var pool=v6PatternPool(section.family);
@@ -4720,10 +5845,14 @@ function v6BindPreview(){
   try{doc=frame&&frame.contentDocument;view=frame&&frame.contentWindow}catch(error){return}
   if(!doc||!view||doc===v6BoundDoc)return;
   v6BoundDoc=doc;
-  // The header and the footer are `<section>`-shaped too, and neither is a
-  // module anyone can swap, so the id has to be one the project owns.
+  // A module is addressed by an id the project owns; the two global parts are
+  // addressed by their own sentinels. Anything else — a bare `<section>` the
+  // renderer emitted — is not a target.
   function sectionAt(target){
-    var node=target&&target.closest&&target.closest('section[id]');
+    if(!target||!target.closest)return '';
+    if(target.closest('.site-header'))return V6_HEADER;
+    if(target.closest('.site-footer'))return V6_FOOTER;
+    var node=target.closest('section[id]');
     return node&&v6Section(node.id)?node.id:'';
   }
   doc.addEventListener('mousemove',function(event){
@@ -4883,6 +6012,21 @@ function v8Score(pattern,context){
   if(flags.slider)add(Math.round((Number(d.motion)-50)/16),'moves on its own');
 
   add(v8Overlap(context.corpus,profile),'matches the brief’s own words');
+  /*
+   * The style's own pattern preferences.
+   *
+   * This is what makes a style change the *shape* of the page rather than only its
+   * colours: Art Gallery reaches for spacious large-media bands and refuses dense
+   * six-across grids, Precision SaaS does the opposite, and both are choosing from
+   * the same 154 patterns.
+   */
+  if(context.style){
+    var styleWeight=compilePatternWeight(context.style,pattern.family,profile);
+    styleWeight.why.forEach(function(reason){
+      var parts=reason.match(/^([+-])(\d+)\s+(.*)$/);
+      if(parts)add(Number(parts[1]+parts[2]),parts[3]);
+    });
+  }
   // The catalogue's own recommendation is the incumbent, not just another
   // candidate: a brief that says nothing distinctive should keep the pattern the
   // library considers the family's best general answer, and only a real signal
@@ -4919,9 +6063,12 @@ function v8RankPatterns(family,options){
   var context={
     design:state.project.design,
     corpus:v8BriefCorpus(),
+    style:opts.style!==undefined?opts.style:v10ActiveStyle(),
     used:used
   };
-  var seed=v8Hash(context.corpus+'|'+state.project.design.archetype+'|'+family+'|'+(opts.index||0));
+  // The style joins the tie-break seed, so two concepts on two styles do not
+  // collapse onto the same pattern whenever the brief says nothing decisive.
+  var seed=v8Hash(context.corpus+'|'+(state.project.design.archetype||'')+'|'+(context.style?styleKey(context.style):'')+'|'+(opts.variant||'')+'|'+family+'|'+(opts.index||0));
   return pool.map(function(pattern){
     var entry=v8Score(pattern,context);
     entry.tiebreak=v8Hash(seed+'|'+pattern.id);
@@ -4935,6 +6082,33 @@ function v8PickPattern(family,index,options){
   return ranked.length?ranked[0].pattern:null;
 }
 
+/**
+ * Re-selects every section's pattern for a style, keeping the words.
+ *
+ * A style that only recoloured the page would be a palette preset. This is where a
+ * style changes the *shape* of the page: each band is re-ranked with that style's
+ * own pattern preferences and swapped through `switchPattern`, which carries the
+ * existing content across rather than resetting it to the demo copy.
+ *
+ * A section whose pattern the strategist chose by hand is left alone — an explicit
+ * selection always wins (§39).
+ */
+function v10RepatternSections(concept,profile){
+  if(!concept||!profile||!Array.isArray(concept.sections))return 0;
+  var used=[],changed=0;
+  concept.sections.forEach(function(section,index){
+    if(section.patternLocked){used.push(section.patternId);return}
+    var ranked=v8RankPatterns(section.family,{index:index,used:used,style:profile,variant:concept.variantType});
+    var next=ranked.length?ranked[0].pattern:null;
+    if(next&&next.id!==section.patternId){
+      switchPattern(section,next);
+      changed+=1;
+    }
+    used.push(section.patternId);
+  });
+  return changed;
+}
+
 /*
  * Only an unspecified pattern is chosen. An explicit id — a restored project, an
  * import, the pattern modal, the preview switcher — is always obeyed, so this
@@ -4943,7 +6117,25 @@ function v8PickPattern(family,index,options){
 var createSectionBeforeV8=createSection;
 createSection=function(family,index,patternId){
   var chosen=patternId||(v8PickPattern(family,index||0)||{}).id||null;
-  return createSectionBeforeV8(family,index||0,chosen);
+  var section=createSectionBeforeV8(family,index||0,chosen);
+  // Composed in the active style's language from the moment it exists, rather than
+  // in the demo project's and then restyled.
+  var profile=v10ActiveStyle();
+  if(profile&&section){
+    var recipe=compileSectionRecipe(profile,family,{base:sectionPreset(family,index||0)});
+    ensureSectionSettings(section);
+    if(recipe.container)section.layout.container=recipe.container;
+    if(recipe.paddingTop)section.layout.paddingTop=recipe.paddingTop;
+    if(recipe.paddingBottom)section.layout.paddingBottom=recipe.paddingBottom;
+    if(recipe.inverted!==undefined)section.layout.inverted=recipe.inverted;
+    if(recipe.viewport!==undefined){section.effects=section.effects||{};section.effects.viewport=recipe.viewport}
+    if(recipe.decoration)section.decoration=recipe.decoration;
+    if(recipe.styleColumns){
+      if(recipe.styleColumns.desktop)section.layout.columns=recipe.styleColumns.desktop;
+      if(recipe.styleColumns.mobile)section.layout.columnsMobile=recipe.styleColumns.mobile;
+    }
+  }
+  return section;
 };
 
 /*
@@ -4955,6 +6147,12 @@ createSection=function(family,index,patternId){
 var applyArchetypeBeforeV8=applyArchetype;
 applyArchetype=function(key){
   applyArchetypeBeforeV8(key);
+  // The concept is no longer resolving from a style profile, so it must stop
+  // claiming to be. The review panel reads this to name the design source.
+  var conceptForArchetype=getActiveConcept(state.project);
+  if(conceptForArchetype&&conceptForArchetype.style&&conceptForArchetype.style.styleId){
+    conceptForArchetype.style=Object.assign({},conceptForArchetype.style,{familyId:'',styleId:'',archetypeKey:key});
+  }
   var directives=briefDirectives(state.project.brief);
   if(!directives.any)return;
   // `history:false` folds this into the archetype's own undo entry. A separate
@@ -4973,7 +6171,37 @@ applyArchetype=function(key){
   },{history:false,message:'Applied archetype '+key+', keeping what your brief asked for'});
 };
 
-v2EnsureProject(state.project);state.project.sections.forEach(function(s){ensureSectionSettings(s);syncSectionNode(s)});window.__SBS_TEST_API={version:SBS_BUILDER_VERSION,previewSwitcher:{step:v6Step,pool:v6PatternPool,hoverId:function(){return v6HoverId},show:v6Show,hide:v6Hide,geometry:v6Geometry},patternChoice:function(family,index){return v8RankPatterns(family,{index:index||0}).slice(0,8).map(function(entry){return {id:entry.pattern.id,score:entry.score,why:entry.why}})},pickPattern:function(family,index){return (v8PickPattern(family,index||0)||{}).id||''},briefDirectives:function(){return briefDirectives(state.project.brief)},ensureProject:v2EnsureProject,buildTheme:function(p,options){return buildTheme(p||state.project,options||{})},buildSiteDocument:function(p,options){return buildSiteDocument(p||state.project,options||{})},buildPageExport:function(p){return buildPageExport(p||state.project)},buildNavigationExport:function(p){return buildNavigationExport(p||state.project)},buildFooterExport:function(p){return buildFooterExport(p||state.project)},buildGlobalsExport:function(p){return buildGlobalsExport(p||state.project)},buildCompleteExport:function(p){return buildExport(p||state.project)},auditDocument:v2AuditDocument,createSection:createSection,patternIds:DATA.patterns.map(function(p){return p.id}),patterns:DATA.patterns.map(function(p){return {id:p.id,family:p.family}}),flowIds:DATA.flows.map(function(f){return f.id}),design:{ensure:v3EnsureDesign,dialTokens:function(p){return dialTokens((p||state.project).design)},dialLevels:function(p){return dialLevels((p||state.project).design)},dialCss:function(p){return dialCss((p||state.project).design)},buttonStyleCss:buttonStyleCss,presets:DIAL_PRESETS,dialKeys:DIAL_KEYS,buttonStyles:BUTTON_STYLES},brain:{applyContentDraft:v3ApplyContentDraft,applyCustomFlow:v3ApplyCustomFlow},media:{sectionSlots:v5SectionSlots,slots:function(){return v5MediaSlots(state.project)},fillSlots:v5FillSlots,applyPlan:v5ApplyMediaPlan,clearPlan:v5ClearMediaPlan},simple:{mode:v4Mode,setMode:v4SetMode,steps:v4Steps,ensure:function(){return v4EnsureSimple(state.project)},applyConcept:v4ApplyConcept,normalizeConcepts:v4NormalizeConcepts,buildConceptExport:function(p){return v4BuildConceptExport(p||state.project)},importConcept:v4ImportConcept,canLeaveBrief:v4CanLeaveSimpleBrief},validate:validateProject,state:state};if(typeof briefBrainFeature.initBriefBrain==='function')briefBrainFeature.initBriefBrain(v3BrainContext());v4RenderModeChrome();renderAll();setTimeout(function(){updateDevice();renderPreview()},80);
+v2EnsureProject(state.project);state.project.sections.forEach(function(s){ensureSectionSettings(s);syncSectionNode(s)});window.__SBS_TEST_API={version:SBS_BUILDER_VERSION,previewSwitcher:{step:v6Step,pool:v6PatternPool,hoverId:function(){return v6HoverId},show:v6Show,hide:v6Hide,geometry:v6Geometry},patternChoice:function(family,index){return v8RankPatterns(family,{index:index||0}).slice(0,8).map(function(entry){return {id:entry.pattern.id,score:entry.score,why:entry.why}})},pickPattern:function(family,index){return (v8PickPattern(family,index||0)||{}).id||''},briefDirectives:function(){return briefDirectives(state.project.brief)},ensureProject:v2EnsureProject,buildTheme:function(p,options){return buildTheme(p||state.project,options||{})},buildSiteDocument:function(p,options){return buildSiteDocument(p||state.project,options||{})},buildPageExport:function(p){return buildPageExport(p||state.project)},buildNavigationExport:function(p){return buildNavigationExport(p||state.project)},buildFooterExport:function(p){return buildFooterExport(p||state.project)},buildGlobalsExport:function(p){return buildGlobalsExport(p||state.project)},buildCompleteExport:function(p){return buildExport(p||state.project)},auditDocument:v2AuditDocument,createSection:createSection,patternIds:DATA.patterns.map(function(p){return p.id}),patterns:DATA.patterns.map(function(p){return {id:p.id,family:p.family}}),flowIds:FLOW_CATALOG.map(function(f){return f.id}),flowCatalog:FLOW_CATALOG,allFlows:function(p){return allFlows(p||state.project)},design:{ensure:v3EnsureDesign,dialTokens:function(p){return dialTokens((p||state.project).design)},dialLevels:function(p){return dialLevels((p||state.project).design)},dialCss:function(p){return dialCss((p||state.project).design)},buttonStyleCss:buttonStyleCss,presets:DIAL_PRESETS,dialKeys:DIAL_KEYS,buttonStyles:BUTTON_STYLES},brain:{applyContentDraft:v3ApplyContentDraft,applyCustomFlow:v3ApplyCustomFlow,sectionFamilies:SECTION_FAMILIES},media:{sectionSlots:v5SectionSlots,slots:function(){return v5MediaSlots(state.project)},fillSlots:v5FillSlots,applyPlan:v5ApplyMediaPlan,clearPlan:v5ClearMediaPlan},simple:{mode:v4Mode,setMode:v4SetMode,steps:v4Steps,ensure:function(){return v4EnsureSimple(state.project)},applyConcept:v4ApplyConcept,normalizeConcepts:v4NormalizeConcepts,buildConceptExport:function(p){return v4BuildConceptExport(p||state.project)},importConcept:v4ImportConcept,canLeaveBrief:v4CanLeaveSimpleBrief},styles:{
+  families:function(){return STYLE_FAMILIES},
+  all:function(){return allStyles()},
+  production:function(){return productionStyles()},
+  inFamily:stylesInFamily,
+  byKey:styleByKey,
+  counts:styleCounts,
+  active:v10ActiveStyle,
+  key:styleKey,
+  choose:v10ChooseStyle,
+  generate:v10GenerateFromStyle,
+  compile:compileStyle,
+  recipe:compileSectionRecipe,
+  patternWeight:compilePatternWeight,
+  variants:VARIANT_RULES
+},concepts:{
+  list:function(p){return listConcepts(p||state.project)},
+  generated:function(p){return listGeneratedConcepts(p||state.project)},
+  active:function(p){return getActiveConcept(p||state.project)},
+  activeId:function(p){return getActiveConceptId(p||state.project)},
+  get:function(id,p){return getConcept(p||state.project,id)},
+  open:v4ApplyConcept,
+  generate:v4GenerateConceptWorkspaces,
+  reset:function(id){return resetConcept(state.project,id)},
+  duplicate:function(from,to){return duplicateConcept(state.project,from,to)},
+  serialize:function(p){return serializeProject(p||state.project)},
+  json:function(p){return projectToJson(p||state.project)},
+  isolationDiff:conceptIsolationDiff,
+  history:function(){return conceptHistory.report()},
+  migration:conceptMigration
+},validate:validateProject,state:state};if(typeof briefBrainFeature.initBriefBrain==='function')briefBrainFeature.initBriefBrain(v3BrainContext());v4RenderModeChrome();renderAll();setTimeout(function(){updateDevice();renderPreview()},80);
 })();
 
 }

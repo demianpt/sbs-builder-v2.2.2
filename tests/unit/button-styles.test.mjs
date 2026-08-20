@@ -92,6 +92,32 @@ describe('buttonStyleCss', () => {
     }
   });
 
+  it('never lifts the whole button on hover for the two families that used to', () => {
+    // Solid Shift and Pill Glow were the only families that translated upward,
+    // and Pill Glow far enough to read as the button jumping away. dst-shared
+    // gives every button a shared -2px lift, so Solid Shift has to say `none`
+    // rather than merely omit a transform.
+    expect(css['solid-shift']).toContain('transform:none');
+    expect(css['solid-shift']).not.toContain('translateY(calc(-1 * var(--sbs-hover-lift)))');
+    expect(css['pill-glow']).not.toContain('translateY(calc(-1 * var(--sbs-hover-lift)))');
+    // Pill Glow still grows, in place.
+    expect(css['pill-glow']).toContain('transform:scale(1.03)');
+  });
+
+  it('asks the page which label colour can be read on the ground it paints', () => {
+    // A pale accent used to get a hard-coded white label, which is a button
+    // with no visible text. Every label that lands on the accent or the ink
+    // reads its colour from a token the page derives from the palette.
+    for (const [id, value] of Object.entries(css)) {
+      const hovers = value.split('\n').filter((line) => /\.-primary:hover|\.-secondary:hover/.test(line) && line.includes('color:#fff'));
+      expect(hovers, `${id} still hard-codes a white label on a palette ground`).toEqual([]);
+    }
+    expect(css['sweep-fill']).toContain('var(--sbs-on-ink');
+    expect(css['magnetic-arrow']).toContain('var(--sbs-on-accent');
+    expect(css['corner-cut']).toContain('var(--sbs-on-ink');
+    expect(css['ink-wipe']).toContain('var(--sbs-on-accent');
+  });
+
   it('drives its timing from the movement dial, not a fixed duration', () => {
     for (const [id, value] of Object.entries(css)) {
       expect(value, id).toContain('var(--sbs-motion-duration)');

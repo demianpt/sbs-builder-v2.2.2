@@ -120,6 +120,38 @@ function designOf(page) {
   });
 }
 
+/**
+ * The V1/V2/V3 switcher addresses concept workspaces by id.
+ *
+ * It used to carry a list index, which was honest when a concept was a design
+ * slice inside `simple.concepts`. A concept is now a first-class workspace with a
+ * stable id, and the pill says which one it opens.
+ */
+function conceptPill(page, conceptId) {
+  return page.locator(`[data-concept-pill="${conceptId}"]`);
+}
+
+/** Every concept's workspace, read straight off the project. */
+function conceptWorkspaces(page) {
+  return page.evaluate(() => {
+    const api = window.__SBS_TEST_API;
+    const concepts = api.concepts.list(api.state.project);
+    return concepts.map((concept) => ({
+      id: concept.id,
+      slot: concept.slot,
+      status: concept.status,
+      flowId: concept.flowId,
+      families: (concept.sections || []).map((section) => section.family).join(','),
+      titles: (concept.sections || []).map((section) => section.content?.title).join('|'),
+      accent: concept.design?.palette?.accent,
+      fontDisplay: concept.design?.fontDisplay,
+      archetype: concept.design?.archetype,
+      logoText: concept.header?.logoText,
+      revision: concept.revision,
+    }));
+  });
+}
+
 function projectWork(page) {
   return page.evaluate(() => {
     const project = window.__SBS_TEST_API.state.project;
@@ -196,7 +228,7 @@ test.describe('the builder mode switch', () => {
     await expect(page.locator('#sideKicker')).toHaveText('Simple builder');
 
     await page.locator('[data-builder-mode="advanced"]').click();
-    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('sbs-dst-page-builder-v2') || '{}').builderMode)).toBe('advanced');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('sbs-builder-v3') || '{}').builderMode)).toBe('advanced');
     await page.reload();
     await page.waitForFunction(() => Boolean(window.__SBS_TEST_API));
     await expect(page.locator('#sideKicker')).toHaveText('Advanced builder');
@@ -218,16 +250,33 @@ test.describe('simple builder · Step 01 Brief and Direction', () => {
     await expect(page.locator('.btn-style-card')).toHaveCount(10);
   });
 
-  test('keeps navigation and footer collapsed', async ({ page }) => {
+  test('condenses the step into disclosures, with two of them closed', async ({ page }) => {
     await stubBrain(page);
     await enterSimple(page);
-    const collapsible = page.locator('.panel-collapsible');
-    await expect(collapsible).toHaveCount(1);
-    expect(await collapsible.evaluate((node) => node.open)).toBe(false);
-    await expect(collapsible).toContainText('Navigation and footer');
-    await collapsible.locator('summary').click();
-    expect(await collapsible.evaluate((node) => node.open)).toBe(true);
-    await expect(collapsible.locator('[data-bind="global.header.logoText"]')).toHaveCount(1);
+    // Step 01 asks for one paragraph and then offers five panels of controls.
+    // Every one of them is a disclosure so the step can be read at a glance.
+    const panels = await page.$$eval('#editorInner details.panel-collapsible', (nodes) => nodes.map((node) => ({
+      title: node.querySelector('h2').textContent,
+      open: node.open,
+    })));
+    expect(panels.map((panel) => panel.title)).toEqual([
+      'Palette and type', 'Button family', 'Quick styles', 'Design dials', 'Navigation and footer',
+    ]);
+    // Closed: the family the concept already chose, and the globals. Everything
+    // else is the task at hand and stays open.
+    expect(panels.filter((panel) => !panel.open).map((panel) => panel.title))
+      .toEqual(['Button family', 'Navigation and footer']);
+
+    // Closed does not mean gone: opening either reveals its real controls.
+    const buttons = page.locator('details.panel-collapsible:has(h2:text-is("Button family"))');
+    await expect(buttons).toContainText('Solid Shift');
+    await buttons.locator('summary').click();
+    await expect(buttons.locator('.btn-style-card').first()).toBeVisible();
+
+    const globals = page.locator('details.panel-collapsible:has(h2:text-is("Navigation and footer"))');
+    await globals.locator('summary').click();
+    expect(await globals.evaluate((node) => node.open)).toBe(true);
+    await expect(globals.locator('[data-bind="global.header.logoText"]')).toHaveCount(1);
   });
 
   test('builds three concepts, each with its own style, buttons and dials', async ({ page }) => {
@@ -273,7 +322,7 @@ test.describe('simple builder · Step 01 Brief and Direction', () => {
     await page.locator('[data-step="2"]').click();
     expect(await page.evaluate(() => window.__SBS_TEST_API.state.currentStep)).toBe(0);
 
-    await page.locator('[data-concept-pill="1"]').click();
+    await conceptPill(page, 'v2').click();
     await expect(page.locator('.nav-btn.next')).toBeEnabled();
     await page.locator('.nav-btn.next').click();
     expect(await page.evaluate(() => window.__SBS_TEST_API.state.currentStep)).toBe(1);
@@ -303,9 +352,9 @@ test.describe('the V1/V2/V3 pills', () => {
     await expect(page.locator('#conceptBar')).toBeVisible();
     await expect(page.locator('.concept-pill')).toHaveCount(3);
     await expect(page.locator('.concept-pill')).toHaveText(['V1', 'V2', 'V3']);
-    await expect(page.locator('#conceptBarName')).toContainText('Choose one to continue');
+    await expect(page.locator('.concept-pill').first()).toHaveAttribute('data-concept-pill', 'v1');
 
-    await page.locator('[data-concept-pill="0"]').click();
+    await conceptPill(page, 'v1').click();
     for (const step of [1, 2, 3]) {
       await page.locator('.nav-btn.next').click();
       expect(await page.evaluate(() => window.__SBS_TEST_API.state.currentStep)).toBe(step);
@@ -314,22 +363,29 @@ test.describe('the V1/V2/V3 pills', () => {
     }
   });
 
-  test('are hidden in the advanced builder', async ({ page }) => {
+  // The switcher is project chrome, not a feature of one builder: a strategist
+  // who opens Advanced to change a pattern is still working on one of three
+  // proposals and still has to be able to see and change which.
+  test('stay available in the advanced builder', async ({ page }) => {
     await stubBrain(page);
     await buildConcepts(page);
-    await page.locator('[data-concept-pill="0"]').click();
+    await conceptPill(page, 'v1').click();
     await expect(page.locator('#conceptBar')).toBeVisible();
     await page.locator('[data-builder-mode="advanced"]').click();
-    await expect(page.locator('#conceptBar')).toBeHidden();
+    await expect(page.locator('#conceptBar')).toBeVisible();
+    await expect(page.locator('.concept-pill')).toHaveText(['V1', 'V2', 'V3']);
+    await conceptPill(page, 'v3').click();
+    await expect(conceptPill(page, 'v3')).toHaveClass(/is-active/);
+    expect(await page.evaluate(() => window.__SBS_TEST_API.concepts.activeId(window.__SBS_TEST_API.state.project))).toBe('v3');
   });
 
   test('each pill applies a materially different design to the live page', async ({ page }) => {
     await stubBrain(page);
     await buildConcepts(page);
     const designs = [];
-    for (const index of [0, 1, 2]) {
-      await page.locator(`[data-concept-pill="${index}"]`).click();
-      await expect(page.locator(`[data-concept-pill="${index}"]`)).toHaveClass(/is-active/);
+    for (const id of ['v1', 'v2', 'v3']) {
+      await conceptPill(page, id).click();
+      await expect(conceptPill(page, id)).toHaveClass(/is-active/);
       designs.push(await designOf(page));
     }
     expect(new Set(designs.map((design) => JSON.stringify(design))).size).toBe(3);
@@ -346,34 +402,84 @@ test.describe('the V1/V2/V3 pills', () => {
     })).toBe(`${designs[2].buttonStyle}|${designs[2].accent.toLowerCase()}`);
   });
 
-  test('switching concepts never disturbs content, flow or module work', async ({ page }) => {
+  // The first flow chosen reaches every concept, because three proposals built
+  // on three different structures are not a comparison. Once a concept has been
+  // edited it keeps its own.
+  test('the first flow chosen applies to all three concepts', async ({ page }) => {
     await stubBrain(page);
     await buildConcepts(page);
-    await page.locator('[data-concept-pill="0"]').click();
-    // Step 02: choose a flow.
+    await conceptPill(page, 'v1').click();
     await page.locator('.nav-btn.next').click();
     await page.locator('[data-brain-action="apply-flow"]').first().click();
     await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.flowId)).toBe('B2');
-    // Step 03: edit content and the global header.
-    await page.locator('.nav-btn.next').click();
-    await page.locator('#editorInner [data-bind$=".title"]').first().fill('Gentle dentistry for nervous patients');
-    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.sections[0].content.title)).toBe('Gentle dentistry for nervous patients');
+    const workspaces = await conceptWorkspaces(page);
+    expect(workspaces.map((concept) => concept.flowId)).toEqual(['B2', 'B2', 'B2']);
+    // Same structure, three designs.
+    expect(new Set(workspaces.map((concept) => concept.families)).size).toBe(1);
+    expect(new Set(workspaces.map((concept) => concept.accent)).size).toBe(3);
+    // And no two concepts share a module identity.
+    const ids = await page.evaluate(() => window.__SBS_TEST_API.concepts.list(window.__SBS_TEST_API.state.project)
+      .flatMap((concept) => (concept.sections || []).map((section) => section.id)));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
 
-    const before = await projectWork(page);
-    for (const index of [1, 2, 0, 2]) {
-      await page.locator(`[data-concept-pill="${index}"]`).click();
-      await page.waitForTimeout(120);
+  test('every concept keeps its own page, and switching loses nothing', async ({ page }) => {
+    await stubBrain(page);
+    await buildConcepts(page);
+    await conceptPill(page, 'v1').click();
+    await page.locator('.nav-btn.next').click();
+    await page.locator('[data-brain-action="apply-flow"]').first().click();
+    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.flowId)).toBe('B2');
+    await page.locator('.nav-btn.next').click();
+
+    // A different headline in each concept.
+    const headlines = { v1: 'V1 gentle dentistry', v2: 'V2 warm and welcoming', v3: 'V3 considered care' };
+    for (const [id, headline] of Object.entries(headlines)) {
+      await conceptPill(page, id).click();
+      await page.locator('#editorInner [data-bind$=".title"]').first().fill(headline);
+      await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.sections[0].content.title)).toBe(headline);
     }
-    const after = await projectWork(page);
-    expect(after).toEqual(before);
-    // The design did change, which is the only thing a concept may change.
-    expect((await designOf(page)).archetype).toBe('A');
+    // A different module count in V3 as well, so the divergence is structural.
+    await conceptPill(page, 'v3').click();
+    const v3Count = await page.evaluate(() => window.__SBS_TEST_API.state.project.sections.length);
+
+    // Round-trip repeatedly. Every concept comes back exactly as it was left.
+    for (const id of ['v1', 'v3', 'v2', 'v1', 'v3', 'v2']) {
+      await conceptPill(page, id).click();
+      await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.sections[0].content.title)).toBe(headlines[id]);
+    }
+    await conceptPill(page, 'v3').click();
+    expect(await page.evaluate(() => window.__SBS_TEST_API.state.project.sections.length)).toBe(v3Count);
+
+    // And the isolation holds at the object level: three distinct headlines.
+    const workspaces = await conceptWorkspaces(page);
+    expect(workspaces.map((concept) => concept.titles.split('|')[0])).toEqual([headlines.v1, headlines.v2, headlines.v3]);
+  });
+
+  test('everything survives a reload, including which concept was open', async ({ page }) => {
+    await stubBrain(page);
+    await buildConcepts(page);
+    await conceptPill(page, 'v2').click();
+    await page.locator('[data-bind="design.palette.accent"]').evaluate((input) => {
+      input.value = '#5b0e20';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.design.palette.accent)).toBe('#5b0e20');
+    const before = await conceptWorkspaces(page);
+
+    // Autosave is debounced; wait for it to land before reloading.
+    await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('sbs-builder-v3') || '{}').project?.conceptSet))).toBe(true);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(window.__SBS_TEST_API));
+
+    expect(await page.evaluate(() => window.__SBS_TEST_API.concepts.activeId(window.__SBS_TEST_API.state.project))).toBe('v2');
+    expect(await conceptWorkspaces(page)).toEqual(before);
   });
 
   test('a design edit stays with the concept it was made on', async ({ page }) => {
     await stubBrain(page);
     await buildConcepts(page);
-    await page.locator('[data-concept-pill="0"]').click();
+    await conceptPill(page, 'v1').click();
     // The simple builder has no dial panel: the AI sets the dials per concept.
     // Palette is the design control it does expose on this step.
     await page.locator('[data-bind="design.palette.accent"]').evaluate((input) => {
@@ -382,32 +488,64 @@ test.describe('the V1/V2/V3 pills', () => {
     });
     await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.design.palette.accent)).toBe('#123456');
     // Away and back: the edit belongs to V1, not to whatever was last applied.
-    await page.locator('[data-concept-pill="1"]').click();
+    await conceptPill(page, 'v2').click();
     await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.design.palette.accent)).not.toBe('#123456');
-    await page.locator('[data-concept-pill="0"]').click();
+    await conceptPill(page, 'v1').click();
     await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.design.palette.accent)).toBe('#123456');
   });
 
-  test('choosing a concept is one undo step', async ({ page }) => {
+  /*
+   * Switching concepts is navigation, not an edit.
+   *
+   * It used to be one undo step, which was consistent while a switch overwrote
+   * the design slice. Now nothing is overwritten, so there is nothing to undo —
+   * and undo must stay pointed at the edits made inside the concept on screen.
+   */
+  test('switching a concept is not an undoable edit, and undo is per concept', async ({ page }) => {
     await stubBrain(page);
     await buildConcepts(page);
-    await page.locator('[data-concept-pill="0"]').click();
-    const first = await designOf(page);
-    await page.locator('[data-concept-pill="2"]').click();
-    expect((await designOf(page)).archetype).toBe('A');
+    await conceptPill(page, 'v1').click();
+
+    const setAccent = async (hex) => {
+      await page.locator('[data-bind="design.palette.accent"]').evaluate((input, value) => {
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }, hex);
+      await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.design.palette.accent)).toBe(hex);
+    };
+    const accent = () => page.evaluate(() => window.__SBS_TEST_API.state.project.design.palette.accent);
+
+    await setAccent('#111111');
+    const v1Before = await accent();
+    await conceptPill(page, 'v2').click();
+    const v2Untouched = await accent();
+    // Nothing was edited on V2, so V2 has nothing to undo.
+    await expect(page.locator('#undoBtn')).toBeDisabled();
+    await setAccent('#222222');
     await page.locator('#undoBtn').click();
-    await expect.poll(() => designOf(page).then((design) => design.archetype)).toBe(first.archetype);
+    await expect.poll(accent).toBe(v2Untouched);
+
+    // V1's own edit is still there, and still undoable on V1.
+    await conceptPill(page, 'v1').click();
+    expect(await accent()).toBe(v1Before);
+    await expect(page.locator('#undoBtn')).toBeEnabled();
+    await page.locator('#undoBtn').click();
+    await expect.poll(accent).not.toBe(v1Before);
+    // Undoing V1 left V2 exactly where it was.
+    await conceptPill(page, 'v2').click();
+    expect(await accent()).toBe(v2Untouched);
   });
 });
 
 test.describe('simple builder · Step 02 Page flow', () => {
-  test('shows only the three recommendations', async ({ page }) => {
+  // Five, not three: the concept job returns the five best flows for the brief.
+  test('shows only the five recommendations', async ({ page }) => {
     await stubBrain(page);
     await buildConcepts(page);
-    await page.locator('[data-concept-pill="0"]').click();
+    await conceptPill(page, 'v1').click();
     await page.locator('.nav-btn.next').click();
 
-    await expect(page.locator('.brain-flow-list li')).toHaveCount(3);
+    await expect(page.locator('.brain-flow-list li')).toHaveCount(5);
     // The full library and the page sequence are not on this step.
     await expect(page.locator('.flow-card')).toHaveCount(0);
     await expect(page.locator('.module-row')).toHaveCount(0);
@@ -421,7 +559,7 @@ test.describe('simple builder · Step 02 Page flow', () => {
   test('applying a recommendation rebuilds the page', async ({ page }) => {
     await stubBrain(page);
     await buildConcepts(page);
-    await page.locator('[data-concept-pill="0"]').click();
+    await conceptPill(page, 'v1').click();
     await page.locator('.nav-btn.next').click();
     await page.locator('[data-brain-action="apply-flow"]').first().click();
     await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.flowId)).toBe('B2');
@@ -435,7 +573,7 @@ test.describe('simple builder · Step 03 Modules', () => {
   async function openModules(page) {
     await stubBrain(page);
     await buildConcepts(page);
-    await page.locator('[data-concept-pill="0"]').click();
+    await conceptPill(page, 'v1').click();
     await page.locator('.nav-btn.next').click();
     await page.locator('.nav-btn.next').click();
     await expect(page.locator('.module-row').first()).toBeVisible();
@@ -543,18 +681,121 @@ test.describe('simple builder · Step 04 Review and export', () => {
   async function openReview(page) {
     await stubBrain(page);
     await buildConcepts(page);
-    await page.locator('[data-concept-pill="1"]').click();
+    await conceptPill(page, 'v2').click();
     for (let step = 0; step < 3; step += 1) await page.locator('.nav-btn.next').click();
     await expect(page.locator('.check-list')).toBeVisible();
   }
 
-  test('offers exactly one download: the concept JSON', async ({ page }) => {
+  /*
+   * Simple exports through the same pipeline as Advanced.
+   *
+   * This used to assert one download, which stopped being true when the two
+   * builders were put on one export contract. The concept JSON is the extra one
+   * Simple has, and the all-concepts archive is the extra one the concept set
+   * brought with it.
+   */
+  test('offers the same WordPress artifacts as Advanced, plus the concept handoff', async ({ page }) => {
     await openReview(page);
     const exports = await page.$$eval('[data-export]', (nodes) => nodes.map((node) => node.dataset.export));
-    expect(exports).toEqual(['simple-concept']);
-    await expect(page.locator('#editorInner')).not.toContainText('Standalone website HTML');
-    await expect(page.locator('#editorInner')).not.toContainText('Complete project bundle');
-    await expect(page.locator('#editorInner')).toContainText('switch to the Advanced builder');
+    for (const artifact of ['navigation', 'footer', 'page', 'html', 'bundle', 'simple-concept', 'all-concepts']) {
+      expect(exports, artifact).toContain(artifact);
+    }
+  });
+
+  test('names every concept, its design source and its revision', async ({ page }) => {
+    await openReview(page);
+    await expect(page.locator('.concept-row')).toHaveCount(3);
+    await expect(page.locator('.concept-row.is-active')).toHaveCount(1);
+    await expect(page.locator('.concept-row.is-active .concept-row__id b')).toHaveText('V2');
+    // The concept being edited is the one that cannot be opened again, and the
+    // other two can be.
+    await expect(page.locator('[data-concept-action="open"]')).toHaveCount(2);
+    await expect(page.locator('[data-concept-action="reset"]')).toHaveCount(3);
+  });
+
+  /*
+   * The row actions were four sentences of label inside a fixed 27px icon square,
+   * so they overflowed their buttons and printed on top of each other. This holds
+   * the fix: icons that fit, an accessible name each, and a hover label that stays
+   * inside the editor column instead of being cut off by it.
+   */
+  test('the concept actions are icons that fit, name themselves and label on hover', async ({ page }) => {
+    await openReview(page);
+    const actions = page.locator('.concept-row .concept-action');
+    await expect(actions.first()).toBeVisible();
+
+    const geometry = await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll('.concept-row .concept-action')];
+      const editor = document.querySelector('.editor').getBoundingClientRect();
+      const overlaps = [];
+      const boxes = nodes.map((node) => node.getBoundingClientRect());
+      for (let i = 0; i < boxes.length; i += 1) {
+        for (let j = i + 1; j < boxes.length; j += 1) {
+          const a = boxes[i];
+          const b = boxes[j];
+          if (a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5) overlaps.push([i, j]);
+        }
+      }
+      return {
+        overlaps,
+        count: nodes.length,
+        spillsOutOfRow: nodes.filter((node) => {
+          const row = node.closest('.concept-row').getBoundingClientRect();
+          const box = node.getBoundingClientRect();
+          return box.right > row.right + 0.5 || box.left < row.left - 0.5;
+        }).length,
+        outsideEditor: boxes.filter((box) => box.right > editor.right + 0.5 || box.left < editor.left - 0.5).length,
+        missingName: nodes.filter((node) => !node.getAttribute('aria-label') || !node.dataset.tip).length,
+        hasIcon: nodes.every((node) => node.querySelector('svg')),
+      };
+    });
+    // The concept being edited cannot be opened again, so it has one action fewer.
+    expect(geometry.count).toBe(11);
+    expect(geometry.overlaps).toEqual([]);
+    expect(geometry.spillsOutOfRow).toBe(0);
+    expect(geometry.outsideEditor).toBe(0);
+    expect(geometry.missingName).toBe(0);
+    expect(geometry.hasIcon).toBe(true);
+
+    // The hover label appears, says what the button does, and is not cut off by
+    // the editor column on either the leftmost or the rightmost button.
+    for (const action of [actions.first(), actions.last()]) {
+      await action.hover();
+      // The label fades in over 140ms, so poll rather than reading the frame the
+      // pointer arrived on.
+      await expect.poll(() => action.evaluate((node) => getComputedStyle(node, '::after').opacity)).toBe('1');
+      const tip = await action.evaluate((node) => {
+        const style = getComputedStyle(node, '::after');
+        const rect = node.getBoundingClientRect();
+        const probe = document.createElement('span');
+        probe.textContent = style.content.replace(/^"|"$/g, '');
+        probe.style.cssText = `position:fixed;visibility:hidden;white-space:nowrap;padding:${style.padding};font:${style.font}`;
+        document.body.appendChild(probe);
+        const width = probe.getBoundingClientRect().width;
+        const text = probe.textContent;
+        probe.remove();
+        const left = style.left === 'auto'
+          ? rect.right - width
+          : (style.transform === 'none' ? rect.left : rect.left + rect.width / 2 - width / 2);
+        const editor = document.querySelector('.editor').getBoundingClientRect();
+        return { text, opacity: style.opacity, fits: left >= editor.left - 0.5 && left + width <= editor.right + 0.5 };
+      });
+      expect(tip.text).toMatch(/^(Open|Reset|Copy) V[1-3]/);
+      expect(tip.fits, tip.text).toBe(true);
+    }
+  });
+
+  test('exports carry the concept they came from', async ({ page }) => {
+    await openReview(page);
+    const meta = await page.evaluate(() => {
+      const page_ = window.__SBS_TEST_API.buildPageExport();
+      return { conceptId: page_.concept.conceptId, slot: page_.concept.slot, variantType: page_.concept.variantType, dials: Object.keys(page_.concept.designDials).length };
+    });
+    expect(meta).toEqual({ conceptId: 'v2', slot: 'V2', variantType: 'brand-led', dials: 9 });
+
+    // And switching concepts switches what an export contains.
+    await conceptPill(page, 'v3').click();
+    expect(await page.evaluate(() => window.__SBS_TEST_API.buildPageExport().concept.slot)).toBe('V3');
   });
 
   test('the JSON carries the page, the navigation, the footer, the brief and all three concepts', async ({ page }) => {
@@ -590,7 +831,7 @@ test.describe('the handoff into the advanced builder', () => {
   test('imports a concept JSON with every edit, field and concept intact', async ({ page }) => {
     await stubBrain(page);
     await buildConcepts(page);
-    await page.locator('[data-concept-pill="1"]').click();
+    await conceptPill(page, 'v2').click();
     await page.locator('.nav-btn.next').click();
     await page.locator('[data-brain-action="apply-flow"]').first().click();
     await page.locator('.nav-btn.next').click();
@@ -694,7 +935,10 @@ test.describe('the advanced builder is unchanged', () => {
     const binds = await page.$$eval('#editorInner [data-bind]', (nodes) => nodes.map((node) => node.dataset.bind));
     expect(binds.filter((path) => path.startsWith('brief.')).length).toBeGreaterThanOrEqual(8);
     await page.locator('[data-step="2"]').click();
-    expect(await page.locator('.flow-card').count()).toBeGreaterThanOrEqual(30);
+    // One canonical catalogue, and the runtime adds nothing to it.
+    const catalogue = await page.evaluate(() => window.__SBS_TEST_API.flowCatalog.length);
+    expect(catalogue).toBe(35);
+    expect(await page.locator('.flow-card').count()).toBe(catalogue);
     await expect(page.locator('.module-row').first()).toBeVisible();
   });
 });

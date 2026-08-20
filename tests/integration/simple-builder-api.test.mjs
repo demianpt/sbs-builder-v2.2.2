@@ -161,9 +161,17 @@ describe('POST /api/brief/concepts', () => {
   });
 
   it('refuses a flow id the editor added at runtime but never sent', async () => {
-    // The catalog is the contract. A flow that exists only in the browser is not
-    // in it, and accepting the id would leave the editor pointing at nothing.
-    const { provider } = stubProvider([{ ...GOOD_CONCEPTS, flows: [{ id: 'B11', reason: 'Runtime only.', fit: 0.9 }] }]);
+    /*
+     * The catalog is the contract. A flow that exists only in the browser is not
+     * in it, and accepting the id would leave the editor pointing at nothing.
+     *
+     * `X7` is the shape of a flow a strategist typed into their own project:
+     * those live on the project and are never in the catalogue. This used to use
+     * `B11`, which was a runtime-injected flow at the time and is now a real
+     * catalogue entry — so the case it was written to cover had stopped existing.
+     */
+    expect(FLOWS.map((flow) => flow.id)).not.toContain('X7');
+    const { provider } = stubProvider([{ ...GOOD_CONCEPTS, flows: [{ id: 'X7', reason: 'Runtime only.', fit: 0.9 }] }]);
     const response = await request(appWith(provider))
       .post('/api/brief/concepts')
       .send({ briefText: BRIEF_TEXT, archetypes: ARCHETYPES, flows: FLOWS })

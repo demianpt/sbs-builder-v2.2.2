@@ -17,7 +17,7 @@ export async function useAdvancedBuilder(page) {
       // Write into whichever envelope the builder will actually read, or a
       // migration fixture stored under the v1 key would be shadowed by a v2
       // envelope that exists only to carry this preference.
-      const keys = ['sbs-dst-page-builder-v2', 'sbs-dst-page-builder-v1'];
+      const keys = ['sbs-builder-v3', 'sbs-dst-page-builder-v2', 'sbs-dst-page-builder-v1'];
       const key = keys.find((candidate) => localStorage.getItem(candidate)) || keys[0];
       const saved = JSON.parse(localStorage.getItem(key) || '{}') || {};
       localStorage.setItem(key, JSON.stringify({ ...saved, builderMode: 'advanced' }));

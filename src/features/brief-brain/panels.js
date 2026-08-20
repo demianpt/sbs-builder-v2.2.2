@@ -317,8 +317,9 @@ function contentDraftMarkup(brain, context) {
     return `<p class="brain-hint">The brain writes a first draft for every section in the current page flow, using only the words in your brief. Nothing is applied until you press Apply.</p>`;
   }
   const sections = draft.sections || [];
+  const footer = draft.footer && draft.footer.statement ? draft.footer : null;
   return `<div class="brain-draft">
-    <div class="brain-draft-head"><b>${sections.length} section${sections.length === 1 ? '' : 's'} drafted</b>${sourceNote(draft)}</div>
+    <div class="brain-draft-head"><b>${sections.length} section${sections.length === 1 ? '' : 's'}${footer ? ' and the footer' : ''} drafted</b>${sourceNote(draft)}</div>
     <ol>${sections.map((section) => `<li>
       <span class="brain-draft-family">${esc(sectionFamilyLabel(section.family))}</span>
       <div>
@@ -330,13 +331,22 @@ function contentDraftMarkup(brain, context) {
         ${section.buttons?.length ? `<div class="brain-chips is-buttons">${section.buttons.map((button) => `<span>${esc(button.text)}</span>`).join('')}</div>` : ''}
         ${section.aiWritten === false ? '<small class="brain-flow-note">Drafted locally — the model skipped this section.</small>' : ''}
       </div>
-    </li>`).join('')}</ol>
+    </li>`).join('')}${footer ? `
+    <li>
+      <span class="brain-draft-family">Footer</span>
+      <div>
+        <b>${esc(footer.statement)}</b>
+        ${footer.description ? `<p>${esc(footer.description)}</p>` : ''}
+        ${footer.ctaText ? `<div class="brain-chips is-buttons"><span>${esc(footer.ctaText)}</span></div>` : ''}
+        ${footer.aiWritten === false ? '<small class="brain-flow-note">Drafted locally — the model skipped the footer.</small>' : ''}
+      </div>
+    </li>` : ''}</ol>
     <div class="brain-draft-actions">
       <button type="button" class="brain-primary-button" data-brain-action="apply-content"${off(isBrainBusy(brain))}>Apply this content to the page</button>
       <button type="button" class="brain-text-button" data-brain-action="discard-content"${off(isBrainBusy(brain))}>Discard draft</button>
       ${brain.contentAppliedAt ? `<span class="brain-source is-local">Applied ${esc(new Date(brain.contentAppliedAt).toLocaleString())}</span>` : ''}
     </div>
-    <p class="brain-hint">Applying replaces the copy in every module of the current flow. Media, patterns, layout and effects are untouched, and Undo reverses it in one step.</p>
+    <p class="brain-hint">Applying replaces the copy in every module of the current flow${footer ? ', plus the footer statement, its supporting line and its button label' : ''}. Media, patterns, layout and effects are untouched, and Undo reverses it in one step.</p>
     ${context.debug ? '' : ''}
   </div>`;
 }
@@ -410,6 +420,57 @@ export function renderBriefBrainPanel(context = {}) {
  * Step 03 — the flow planner
  * ------------------------------------------------------------------ */
 
+/**
+ * The typed-outline builder.
+ *
+ * One copy, used by the advanced flow step and the simple one. It used to be
+ * duplicated in both, which is how the two drifted.
+ *
+ * The section reference is the point of it. "The page will have…" over an empty box
+ * asks the strategist to guess the vocabulary, and a guess the mapper cannot resolve
+ * comes back as an unresolved line. Every family the engine can actually build is
+ * listed with what it is for, and each one is a button that appends itself to the
+ * outline — so the box can be filled without typing and without guessing.
+ */
+function outlineBuilder({ brain, busy, planning }) {
+  const outline = String(brain.outline || '');
+  const used = new Set(
+    outline.split(/\r?\n/)
+      .map((line) => line.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const sections = SECTION_FAMILIES.map((family) => {
+    const already = used.has(family.label.toLowerCase());
+    return `<button type="button" class="outline-section${already ? ' is-used' : ''}"
+      data-brain-action="insert-section" data-brain-family="${esc(family.id)}"${off(busy || planning)}
+      title="${esc(family.purpose)}">
+      <b>${esc(family.label)}</b><span>${esc(family.purpose)}</span>
+    </button>`;
+  }).join('');
+
+  return `<div class="brain-subhead"><b>Or describe the page you want</b><small>Built from registered DST sections only</small></div>
+    <label class="brain-field" for="brain-outline"><span>The page will have…</span>
+      <textarea id="brain-outline" rows="4" maxlength="2000" placeholder="1. Hero&#10;2. Before after image gallery&#10;3. A pricing&#10;4. Testimonials" data-brain-field="outline"${off(busy)}>${esc(outline)}</textarea>
+    </label>
+    <details class="outline-reference"${brain.outlineReferenceOpen === false ? '' : ' open'}>
+      <summary data-brain-action="toggle-outline-reference"><b>Everything you can ask for</b><small>${SECTION_FAMILIES.length} registered sections · click to add</small></summary>
+      <p class="brain-hint">Type them in any words you like — "before and after", "what we do", "by the numbers" all resolve. These are the ${SECTION_FAMILIES.length} sections the builder can produce, and nothing outside this list can be built.</p>
+      <div class="outline-sections">${sections}</div>
+    </details>
+    <div class="brain-actions">
+      ${jobButton({
+        action: 'plan-outline',
+        label: 'Build this page flow',
+        workingLabel: 'Mapping your outline…',
+        busy: planning,
+        disabled: busy || outline.trim().length < 3,
+      })}
+      ${thinking(planning, brain.liveMessage)}
+      <span class="brain-hint">Every line becomes a real DST module with real content fields.</span>
+    </div>
+    ${outlinePlanMarkup(brain, busy || planning)}`;
+}
+
 function outlinePlanMarkup(brain, busy) {
   const plan = brain.outlinePlan;
   if (!plan) {
@@ -471,22 +532,7 @@ export function renderFlowBrainPanel(context = {}) {
       ${thinking(running === 'understand', brain.liveMessage)}
     </div>
 
-    <div class="brain-subhead"><b>Or describe the page you want</b><small>Built from registered DST sections only</small></div>
-    <label class="brain-field" for="brain-outline"><span>The page will have…</span>
-      <textarea id="brain-outline" rows="4" maxlength="2000" placeholder="1. Hero&#10;2. Before after image gallery&#10;3. A pricing&#10;4. Testimonials" data-brain-field="outline"${off(busy)}>${esc(brain.outline || '')}</textarea>
-    </label>
-    <div class="brain-actions">
-      ${jobButton({
-        action: 'plan-outline',
-        label: 'Build this page flow',
-        workingLabel: 'Mapping your outline…',
-        busy: running === 'plan-outline',
-        disabled: busy || String(brain.outline || '').trim().length < 3,
-      })}
-      ${thinking(running === 'plan-outline', brain.liveMessage)}
-      <span class="brain-hint">Every line becomes a real DST module with real content fields.</span>
-    </div>
-    ${outlinePlanMarkup(brain, busy)}
+    ${outlineBuilder({ brain, busy, planning: running === 'plan-outline' })}
   </section>`;
 }
 
@@ -729,20 +775,6 @@ export function renderSimpleFlowPanel(context = {}) {
       ? flowRecommendationList(understanding, context)
       : `<p class="brain-hint">Read your brief in Step 01 first and the five best flows will appear here.</p>`}
 
-    <div class="brain-subhead"><b>Or describe the page you want</b><small>Built from registered DST sections only</small></div>
-    <label class="brain-field" for="brain-outline"><span>The page will have…</span>
-      <textarea id="brain-outline" rows="4" maxlength="2000" placeholder="1. Hero&#10;2. Before after image gallery&#10;3. A pricing&#10;4. Testimonials" data-brain-field="outline"${off(busy)}>${esc(ensureBrainState(project).outline || '')}</textarea>
-    </label>
-    <div class="brain-actions">
-      ${jobButton({
-        action: 'plan-outline',
-        label: 'Build this page flow',
-        workingLabel: 'Mapping your outline…',
-        busy: planning,
-        disabled: busy || String(brain.outline || '').trim().length < 3,
-      })}
-      ${thinking(planning, brain.liveMessage)}
-    </div>
-    ${outlinePlanMarkup(brain, busy || planning)}
+    ${outlineBuilder({ brain, busy, planning })}
   </section>`;
 }

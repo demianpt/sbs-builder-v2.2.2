@@ -263,7 +263,8 @@ export function createBriefBrain({ provider, stock, config, logger } = {}) {
               if (!byFamily.has(section.family)) byFamily.set(section.family, []);
               byFamily.get(section.family).push(section);
             }
-            const local = draftPageContent({ brief, families }).sections;
+            const localDraft = draftPageContent({ brief, families });
+            const local = localDraft.sections;
             const sections = families.map((family, index) => {
               const queue = byFamily.get(family);
               const written = queue?.length ? queue.shift() : null;
@@ -272,7 +273,10 @@ export function createBriefBrain({ provider, stock, config, logger } = {}) {
             if (sections.every((section) => section.aiWritten === false)) {
               throw new BriefBrainError('SCHEMA_INVALID', `sections[].family must use exactly these values in order: ${families.join(', ')}.`, { status: 502 });
             }
-            return { sections };
+            // The footer is optional in the answer and never optional in the
+            // result: a model that skipped it gets the deterministic one.
+            const footer = parsed.footer?.statement ? parsed.footer : { ...localDraft.footer, aiWritten: false };
+            return { sections, footer };
           },
         });
         return value;

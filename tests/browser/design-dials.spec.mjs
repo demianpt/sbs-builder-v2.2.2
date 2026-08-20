@@ -187,15 +187,31 @@ test.describe('design dials', () => {
     expect(theme.typography['reading-measure']).toBe('90ch');
   });
 
-  test('the live sample replays the movement on demand', async ({ page }) => {
+  test('the live sample is one card carrying the real tokens, and nothing else', async ({ page }) => {
     await openDirection(page);
     await page.locator('.dial[data-dial="motion"] input[type="range"]').fill('100');
     const sample = page.locator('[data-dial-sample]');
     await expect(sample).toHaveAttribute('style', /--sample-distance:\s*\d+px/);
-    await page.locator('[data-dial-replay]').click();
-    // The class is removed two frames later, so assert the token instead of a
-    // transient class: the sample must be using real motion tokens.
     const distance = await sample.evaluate((node) => node.style.getPropertyValue('--sample-distance'));
     expect(Number.parseFloat(distance)).toBeGreaterThan(60);
+    // One card, not three: the panel is a token readout, not a layout demo, and
+    // three cards cost three times the height in a column that was too long.
+    await expect(page.locator('.dial-sample-card')).toHaveCount(1);
+    // The replay control is gone. It re-ran an entrance nobody asked to see.
+    await expect(page.locator('[data-dial-replay]')).toHaveCount(0);
+  });
+
+  test('pairs the dials two to a row', async ({ page }) => {
+    await openDirection(page);
+    const groups = await page.$$eval('.dial-group', (nodes) => nodes.map((group) => ({
+      columns: getComputedStyle(group.querySelector('.dial-grid')).gridTemplateColumns.split(' ').length,
+      dials: group.querySelectorAll('.dial').length,
+    })));
+    expect(groups.length).toBeGreaterThan(0);
+    for (const group of groups) expect(group.columns).toBe(2);
+    // Nine dials in two columns is at most five rows, where one per row was nine.
+    const rows = await page.$$eval('.dial', (nodes) => new Set(nodes.map((node) => Math.round(node.getBoundingClientRect().top))).size);
+    const dials = groups.reduce((total, group) => total + group.dials, 0);
+    expect(rows).toBeLessThan(dials);
   });
 });

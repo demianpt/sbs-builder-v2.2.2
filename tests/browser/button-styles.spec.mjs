@@ -110,6 +110,75 @@ test.describe('button families', () => {
     await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.design.buttonStyle)).toBe('solid-shift');
   });
 
+  test('no family moves the whole button upward on hover', async ({ page }) => {
+    await openDirection(page);
+    // Solid Shift and Pill Glow both used to lift on hover, Pill Glow far enough
+    // to read as the button jumping away from the cursor. Neither travels now:
+    // Solid Shift deepens its shadow, Pill Glow grows in place.
+    const measure = async (id) => {
+      const button = page.locator(`.btn-style-preview[data-button-style="${id}"] .c-btn.-primary`);
+      await button.scrollIntoViewIfNeeded();
+      await button.hover();
+      // Long enough for the transition to have finished.
+      await page.waitForTimeout(400);
+      const transform = await button.evaluate((node) => getComputedStyle(node).transform);
+      await page.mouse.move(2, 2);
+      return transform;
+    };
+    // matrix(a,b,c,d,tx,ty): the last value is the vertical travel.
+    const verticalTravel = (transform) => {
+      if (transform === 'none') return 0;
+      const parts = transform.replace(/^matrix\(/, '').replace(/\)$/, '').split(',').map(Number);
+      return parts[5];
+    };
+    expect(verticalTravel(await measure('solid-shift'))).toBe(0);
+    const pill = await measure('pill-glow');
+    expect(verticalTravel(pill)).toBe(0);
+    // Pill Glow still does something: it scales.
+    expect(pill).toMatch(/matrix\(1\.0/);
+  });
+
+  test('a button label is readable on whatever ground its style paints', async ({ page }) => {
+    await openDirection(page);
+    // Every label colour used to be written as white, because the ground behind
+    // a button was assumed dark. Across fifty archetypes it is not, and a pale
+    // accent put white text on a light fill.
+    const worst = await page.evaluate(() => {
+      const api = window.__SBS_TEST_API;
+      const luminance = (hex) => {
+        const raw = hex.replace('#', '');
+        const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
+        const channels = [0, 2, 4]
+          .map((i) => Number.parseInt(full.slice(i, i + 2), 16) / 255)
+          .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+      };
+      const ratio = (a, b) => {
+        const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+        return (light + 0.05) / (dark + 0.05);
+      };
+      let lowest = Infinity;
+      for (const style of api.styles.production()) {
+        const palette = style.palette;
+        const project = { ...api.state.project, design: { ...api.state.project.design, palette } };
+        const tokens = api.buildSiteDocument(project).match(/#sbs-site\.ver\{[^}]*\}/)[0];
+        const token = (name) => (tokens.match(new RegExp(`--dst--${name}:(#[0-9a-fA-F]{3,6})`)) || [])[1];
+        for (const [label, ground] of [
+          [token('btn-primary-c'), palette.accent],
+          [token('btn-primary-c-hover'), palette.dark],
+          [token('btn-secondary-c-hover'), palette.ink],
+        ]) {
+          if (!label || !ground) return 0;
+          lowest = Math.min(lowest, ratio(label, ground));
+        }
+      }
+      return lowest;
+    });
+    // The worst pair across all fifty archetypes was 1.09:1 — white on a
+    // near-white accent, which is a button with no visible label at all.
+    expect(worst).toBeGreaterThan(3.5);
+  });
+
   test('the corner and movement dials reach the button samples too', async ({ page }) => {
     await openDirection(page);
     await page.locator('.dial[data-dial="corner"] input[type="range"]').fill('0');

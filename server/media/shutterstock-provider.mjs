@@ -162,6 +162,20 @@ export function createShutterstockProvider({ config, fetchImpl = globalThis.fetc
     }
   }
 
+  /** The quota numbers Shutterstock returns with a 429, if it returned any. */
+  async function readQuota(response) {
+    try {
+      const body = await response.json();
+      return {
+        limit: Number.isFinite(Number(body?.limit)) ? Number(body.limit) : null,
+        remaining: Number.isFinite(Number(body?.remaining)) ? Number(body.remaining) : null,
+        reset: Number.isFinite(Number(body?.reset)) ? Number(body.reset) : null,
+      };
+    } catch (error) {
+      return { limit: null, remaining: null, reset: null };
+    }
+  }
+
   async function get(path, params, { signal, allowMissing = false } = {}) {
     assertConfigured();
     const url = new URL(`${base}${path}`);
@@ -186,12 +200,23 @@ export function createShutterstockProvider({ config, fetchImpl = globalThis.fetc
       // the credentials are invalid (search still works).
       if (allowMissing && (response.status === 404 || response.status === 400 || response.status === 403)) return null;
       if (!response.ok) {
-        const message = response.status === 401 || response.status === 403
-          ? 'Shutterstock denied the request. Check the API token or client id and secret.'
-          : response.status === 429
-            ? 'Shutterstock is rate limiting this account. Try again shortly.'
-            : 'Shutterstock could not complete the search.';
-        throw new BriefBrainError('STOCK_UNAVAILABLE', message, { status: 503, details: { status: response.status } });
+        if (response.status === 429) {
+          // The body carries the account's own numbers. `reset` is epoch ms.
+          const quota = await readQuota(response);
+          const at = quota.reset ? new Date(quota.reset) : null;
+          const when = at && !Number.isNaN(at.getTime())
+            ? ` It resets at ${at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+            : ' Try again shortly.';
+          throw new BriefBrainError(
+            'STOCK_RATE_LIMITED',
+            `Shutterstock's request limit for this account is used up${quota.limit ? ` (${quota.limit} per hour)` : ''}.${when}`,
+            { status: 429, details: { status: 429, ...quota } },
+          );
+        }
+        if (response.status === 401 || response.status === 403) {
+          throw new BriefBrainError('STOCK_DENIED', 'Shutterstock refused these credentials. Check the API token, or the client id and secret.', { status: 502, details: { status: response.status } });
+        }
+        throw new BriefBrainError('STOCK_UNAVAILABLE', 'Shutterstock could not complete the search.', { status: 503, details: { status: response.status } });
       }
       return await response.json();
     } catch (error) {
@@ -301,17 +326,43 @@ export function createShutterstockProvider({ config, fetchImpl = globalThis.fetc
     return data.map(normalizeVideo).filter(Boolean);
   }
 
+  /*
+   * The probe is cached, because it is a real search and the account is metered.
+   *
+   * The status endpoint is polled by every page load, and each poll used to
+   * spend one of the account's hundred hourly requests to draw a green dot — so
+   * a morning of reloads could exhaust the quota before anybody asked for a
+   * single photograph, and the failure then looked like broken credentials.
+   * Whether a credential works does not change minute to minute; five is a
+   * generous freshness for it.
+   */
+  const PROBE_TTL_MS = 5 * 60 * 1000;
+  let probe = { at: 0, value: null };
+
   async function status() {
     if (!configured) return { provider: 'shutterstock', configured: false, available: false, auth: 'none' };
     const auth = token ? 'token' : 'basic';
+    const now = Date.now();
+    if (probe.value) {
+      const fresh = now - probe.at < PROBE_TTL_MS;
+      // A quota that is spent stays spent until it resets. Asking again before
+      // then cannot tell us anything new and costs a request we do not have.
+      const stillThrottled = probe.value.throttled && probe.value.resetsAt && now < probe.value.resetsAt;
+      if (fresh || stillThrottled) return { ...probe.value, cached: true };
+    }
+    const remember = (value) => { probe = { at: Date.now(), value }; return value; };
     try {
       // One cheap real search is the only honest probe: credentials that parse
       // can still be unauthorised for the API.
       await get('/images/search', { query: 'office', per_page: 1, view: 'minimal' }, {});
-      return { provider: 'shutterstock', configured: true, available: true, auth };
+      return remember({ provider: 'shutterstock', configured: true, available: true, auth });
     } catch (error) {
       logger?.warn('shutterstock_status_unavailable', { code: error.code });
-      return { provider: 'shutterstock', configured: true, available: false, auth };
+      if (error.code === 'STOCK_RATE_LIMITED') {
+        // Throttled is not broken: configured, authorised, and out of allowance.
+        return remember({ provider: 'shutterstock', configured: true, available: true, throttled: true, auth, resetsAt: error.details?.reset ?? null });
+      }
+      return remember({ provider: 'shutterstock', configured: true, available: false, auth });
     }
   }
 

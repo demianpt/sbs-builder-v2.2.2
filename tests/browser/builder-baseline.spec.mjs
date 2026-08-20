@@ -99,12 +99,21 @@ test.describe('existing builder baseline', () => {
     expect(legacy.project.footer).toBeTruthy();
     expect(legacy.step).toBe(1);
     expect(legacy.device).toBe('tablet');
+    // The migrated project is V1 exactly as it was, with the other two slots
+    // left empty: an older client's approved work is never re-derived.
+    const concepts = await page.evaluate(() => window.__SBS_TEST_API.concepts.list().map((concept) => ({
+      id: concept.id, status: concept.status, flowId: concept.flowId, archetype: concept.design?.archetype,
+    })));
+    expect(concepts.map((concept) => concept.status)).toEqual(['generated', 'empty', 'empty']);
+    expect(concepts[0]).toMatchObject({ id: 'v1', flowId: 'B2', archetype: 'C' });
+    expect(await page.evaluate(() => window.__SBS_TEST_API.concepts.activeId())).toBe('v1');
+    expect(await page.evaluate(() => window.__SBS_TEST_API.concepts.migration.from)).toBe('sbs-project/2.x');
 
     // The editor autosaves on a debounce, so wait for its own write to land
     // before replacing it — otherwise a save in flight clobbers the fixture
     // between the write and the reload.
     await expect
-      .poll(() => page.evaluate(() => Boolean(localStorage.getItem('sbs-dst-page-builder-v2'))))
+      .poll(() => page.evaluate(() => Boolean(localStorage.getItem('sbs-builder-v3'))))
       .toBe(true);
     await page.evaluate(() => {
       const envelope = JSON.parse(localStorage.getItem('sbs-dst-page-builder-v1'));

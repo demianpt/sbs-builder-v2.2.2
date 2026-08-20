@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { useAdvancedBuilder } from './support/builder-mode.mjs';
+import { previewSettled } from './support/preview.mjs';
 
 /**
  * Switching a module's pattern from the preview, and the two heading defects
@@ -15,6 +16,9 @@ async function openModules(page) {
   await page.locator('[data-step="3"]').click();
   const preview = page.locator('#sitePreview');
   await expect.poll(() => preview.evaluate((frame) => Boolean(frame.contentDocument?.querySelector('#sbs-site')))).toBe(true);
+  // #sbs-site exists in the outgoing document too, so that poll can be
+  // satisfied by a frame that is about to be replaced.
+  await previewSettled(page);
   return preview;
 }
 
@@ -130,6 +134,7 @@ test.describe('switching patterns from the preview', () => {
     await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.simple.mode())).toBe('simple');
     const preview = page.locator('#sitePreview');
     await expect.poll(() => preview.evaluate((frame) => Boolean(frame.contentDocument?.querySelector('#sbs-site')))).toBe(true);
+    await previewSettled(page);
 
     await hoverModule(page, 0);
     const before = await page.evaluate(() => window.__SBS_TEST_API.state.project.sections[0].patternId);

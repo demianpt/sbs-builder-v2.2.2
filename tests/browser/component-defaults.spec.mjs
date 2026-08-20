@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { useAdvancedBuilder } from './support/builder-mode.mjs';
+import { previewSettled } from './support/preview.mjs';
 
 /**
  * Defaults and component corrections that a strategist should never have to
@@ -60,6 +61,9 @@ async function boot(page, families, pins) {
       .map((section) => section.id.replace(/^section-/, '').replace(/-[^-]+-[^-]+$/, ''))
       .join(',');
   }), { timeout: 15_000 }).toBe(expected.join(','));
+  // The document that satisfied that poll can still be replaced by a rebuild
+  // that was already queued, and several tests below measure inside it.
+  await previewSettled(page);
 }
 
 function inPreview(page, fn, arg) {
@@ -227,7 +231,7 @@ test.describe('grid defaults', () => {
 });
 
 test.describe('contact overlay', () => {
-  test('a contact band ships a flat 50% wash so the form is readable', async ({ page }) => {
+  test('a contact band ships the same 60% brand wash as every other photograph', async ({ page }) => {
     await boot(page, ['hero', 'contact']);
     await expect.poll(() => inPreview(page, (frame) => Boolean(frame.contentDocument.querySelector('[id^="section-contact"] .c-overlay')))).toBe(true);
     const overlay = await inPreview(page, (frame) => {
@@ -240,18 +244,22 @@ test.describe('contact overlay', () => {
     expect(overlay).not.toBeNull();
     // One flat colour, not a gradient.
     expect(overlay.image).toBe('none');
-    expect(overlay.colour).toMatch(/^rgba\(/);
-    // Exactly 50%: the alpha carries it and the element opacity stays at 1, so
-    // the two are never multiplied into a 25% wash.
-    expect(overlay.colour).toContain('0.5');
-    expect(overlay.opacity).toBe(1);
+    // The contact band used to carry its own convention: a 50% wash with the
+    // alpha in the colour and the element opacity at 1. It was a second way of
+    // saying the same thing, and weaker than the banners for no stated reason.
+    // One rule now covers every band that paints a photograph.
+    expect(overlay.opacity).toBeCloseTo(0.6, 2);
 
     const fidelity = await page.evaluate(() => {
       const section = window.__SBS_TEST_API.state.project.sections.find((item) => item.family === 'contact');
       return section.fidelity.surface;
     });
     expect(fidelity.overlayEnabled).toBe(true);
-    expect(fidelity.overlayOpacity).toBe(1);
+    expect(fidelity.overlayOpacity).toBeCloseTo(0.6, 2);
+    // The wash is the brand's own dark, not black.
+    const dark = await page.evaluate(() => window.__SBS_TEST_API.state.project.design.palette.dark);
+    const channels = dark.replace('#', '').match(/../g).map((pair) => Number.parseInt(pair, 16));
+    expect(fidelity.overlay).toBe(`rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, 1.00)`);
   });
 });
 

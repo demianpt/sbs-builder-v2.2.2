@@ -14,7 +14,6 @@
   <header class="topbar">
     <div class="brand"><div class="brand-mark">SBS</div><div class="brand-copy"><b>DST Page Builder</b><span>Concept Studio</span></div></div>
     <input id="projectTitle" class="project-title" value="Vision Continuity" aria-label="Project name">
-    <span id="saveStatus" class="save-status">Saved locally</span>
     <!-- Which builder you are in is the single most consequential thing on this
          bar, so it is a labelled two-state control rather than a menu item. -->
     <div class="mode-switch" role="group" aria-label="Builder mode">
@@ -53,6 +52,10 @@
   </aside>
 
   <main class="editor"><div id="editorInner" class="editor-inner"></div></main>
+
+  <!-- Floating, bottom right, over everything: the pill reports the local save
+       and then gets out of the way. -->
+  <div id="saveStatus" class="save-pill" role="status" aria-live="polite" hidden>Saved</div>
 
   <section class="preview">
     <div class="preview-bar">

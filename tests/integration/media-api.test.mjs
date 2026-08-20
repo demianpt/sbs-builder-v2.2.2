@@ -350,8 +350,69 @@ describe('the stock provider', () => {
   it('turns a rejected credential into a plain error, not a crash', async () => {
     const fetchImpl = vi.fn(async () => ({ ok: false, status: 401, async json() { return {}; } }));
     const stock = createShutterstockProvider({ config: testConfig(), fetchImpl });
-    await expect(stock.searchImages({ query: 'golf' })).rejects.toMatchObject({ code: 'STOCK_UNAVAILABLE', status: 503 });
+    // Its own code: this is the one case where "check the credentials" is the
+    // right advice, and it must not be given for the other two.
+    await expect(stock.searchImages({ query: 'golf' })).rejects.toMatchObject({ code: 'STOCK_DENIED' });
     expect(await stock.status()).toMatchObject({ configured: true, available: false, auth: 'token' });
+  });
+
+  /*
+   * A spent quota used to arrive as STOCK_UNAVAILABLE, and the browser's message
+   * for that code told the reader to check the credentials and the connection —
+   * the two things that are demonstrably fine when the body says
+   * `remaining: 0`. It cost real time to diagnose during a demo.
+   */
+  it('reports a spent quota as a rate limit, with the hour it resets', async () => {
+    const reset = Date.UTC(2026, 7, 20, 16, 0, 0);
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      async json() { return { message: 'Too many requests', limit: 100, remaining: 0, reset }; },
+    }));
+    const stock = createShutterstockProvider({ config: testConfig(), fetchImpl });
+    const failure = await stock.searchImages({ query: 'golf' }).catch((error) => error);
+    expect(failure.code).toBe('STOCK_RATE_LIMITED');
+    // 429, not 503: the payload replaces the text of anything 500 and over, and
+    // a quota with its reset time is not a provider internal.
+    expect(failure.status).toBe(429);
+    expect(failure.message).toContain('100 per hour');
+    expect(failure.details).toMatchObject({ limit: 100, remaining: 0, reset });
+
+    // Throttled is not broken. Saying "unavailable" makes the editor claim the
+    // stock library is not set up, which is a different and wrong story.
+    expect(await stock.status()).toMatchObject({ configured: true, available: true, throttled: true, resetsAt: reset });
+  });
+
+  /*
+   * The status endpoint is polled on every page load. Each poll used to spend
+   * one of the account's hundred hourly requests, so a morning of reloads could
+   * exhaust the quota before anybody asked for a photograph — and the resulting
+   * 429 was then reported as "check the credentials".
+   */
+  it('does not spend a request on every status poll', async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: true, async json() { return { data: [] }; } }));
+    const stock = createShutterstockProvider({ config: testConfig(), fetchImpl });
+    expect(await stock.status()).toMatchObject({ available: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    for (let poll = 0; poll < 20; poll += 1) await stock.status();
+    expect(fetchImpl, 'twenty polls should not be twenty searches').toHaveBeenCalledTimes(1);
+    expect(await stock.status()).toMatchObject({ available: true, cached: true });
+    // A real search is never served from that cache.
+    await stock.searchImages({ query: 'golf' });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops probing a spent quota until it resets', async () => {
+    const reset = Date.now() + 30 * 60 * 1000;
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      async json() { return { limit: 100, remaining: 0, reset }; },
+    }));
+    const stock = createShutterstockProvider({ config: testConfig(), fetchImpl });
+    expect(await stock.status()).toMatchObject({ throttled: true, resetsAt: reset });
+    for (let poll = 0; poll < 10; poll += 1) await stock.status();
+    expect(fetchImpl, 'a spent quota cannot tell us anything new until it resets').toHaveBeenCalledTimes(1);
   });
 
   it('never searches without a credential', async () => {

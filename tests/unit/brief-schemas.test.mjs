@@ -113,6 +113,31 @@ describe('coercePageContent', () => {
     const parsed = parsePageContent({ sections: [{ family: 'cta', title: 'Go', buttons: [{ text: 'Go', type: 'ghost' }] }] });
     expect(parsed.sections[0].buttons[0].type).toBe('primary');
   });
+
+  // The footer is the page's last sentence, so the writer is asked for it too.
+  it('reads the footer under whichever name the model used for it', () => {
+    const parsed = parsePageContent({
+      sections: [{ family: 'cta', title: 'Ready?' }],
+      closing: { headline: 'Care that comes to you.', supporting: 'Same-week appointments.', cta: { label: 'Book online' } },
+    });
+    expect(parsed.footer).toEqual({
+      statement: 'Care that comes to you.',
+      description: 'Same-week appointments.',
+      ctaText: 'Book online',
+    });
+  });
+
+  it('takes the label when the footer action is answered as a bare string', () => {
+    const parsed = parsePageContent({ sections: [{ family: 'cta', title: 'Ready?' }], footer: { statement: 'One line.', ctaText: 'Call us' } });
+    expect(parsed.footer.ctaText).toBe('Call us');
+  });
+
+  // No statement means no footer: an object of empty strings would overwrite
+  // the strategist's own closing line with nothing.
+  it('returns no footer at all when the model skipped it', () => {
+    expect(parsePageContent({ sections: [{ family: 'cta', title: 'Ready?' }] }).footer).toBe(null);
+    expect(parsePageContent({ sections: [{ family: 'cta', title: 'Ready?' }], footer: { description: 'Only this.' } }).footer).toBe(null);
+  });
 });
 
 describe('coerceOutlinePlan', () => {

@@ -281,6 +281,54 @@ test.describe('AI page content', () => {
     expect(shapes.pricingKeepsPrice).toBe('string');
   });
 
+  test('writes the footer as well as the modules, and it is one undo', async ({ page }) => {
+    const footer = { statement: 'Readiness you can hand over.', description: 'Continuity programmes that survive the handover.', ctaText: 'Request a briefing' };
+    await stubBrain(page, { content: { footer } });
+    await openBrief(page);
+    const before = await page.evaluate(() => {
+      const part = window.__SBS_TEST_API.state.project.footer;
+      return { statement: part.statement, description: part.description, cta: part.cta.text };
+    });
+
+    await page.locator('[data-brain-action="write-content"]').click();
+    // The footer is reviewed with the sections, because it is applied with them.
+    const draft = page.locator('.brain-draft');
+    await expect(draft).toContainText('and the footer drafted');
+    await expect(draft.locator('.brain-draft-family', { hasText: 'Footer' })).toHaveCount(1);
+    await expect(draft).toContainText(footer.statement);
+
+    await page.locator('[data-brain-action="apply-content"]').click();
+    const after = await page.evaluate(() => {
+      const part = window.__SBS_TEST_API.state.project.footer;
+      return { statement: part.statement, description: part.description, cta: part.cta.text };
+    });
+    expect(after).toEqual({ statement: footer.statement, description: footer.description, cta: footer.ctaText });
+    expect(after).not.toEqual(before);
+
+    // The closing band on the rendered page and in the exported footer JSON.
+    await expect.poll(
+      () => page.locator('#sitePreview').evaluate((frame) => frame.contentDocument.querySelector('.site-footer')?.textContent || ''),
+      { timeout: 20_000 },
+    ).toContain(footer.statement);
+    const exported = await page.evaluate(() => JSON.stringify(window.__SBS_TEST_API.buildFooterExport()));
+    expect(exported).toContain(footer.statement);
+    expect(exported).toContain(footer.ctaText);
+
+    // The same single undo that returns the modules returns the footer.
+    await page.locator('#undoBtn').click();
+    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.footer.statement)).toBe(before.statement);
+  });
+
+  test('leaves the footer alone when the draft carries no closing copy', async ({ page }) => {
+    await stubBrain(page);
+    await openBrief(page);
+    const before = await page.evaluate(() => window.__SBS_TEST_API.state.project.footer.statement);
+    await page.locator('[data-brain-action="write-content"]').click();
+    await expect(page.locator('.brain-draft')).not.toContainText('and the footer drafted');
+    await page.locator('[data-brain-action="apply-content"]').click();
+    expect(await page.evaluate(() => window.__SBS_TEST_API.state.project.footer.statement)).toBe(before);
+  });
+
   test('a discarded draft leaves the page untouched', async ({ page }) => {
     await stubBrain(page);
     await openBrief(page);
@@ -347,6 +395,56 @@ test.describe('the AI flow planner (Step 03)', () => {
     expect(families).toEqual(['hero', 'split', 'pricing', 'testimonial', 'cta']);
   });
 
+  /*
+   * "The page will have…" over an empty box asks the strategist to guess the
+   * vocabulary, and a guess the mapper cannot resolve comes back as an unresolved
+   * line. Every family the engine can build is listed with what it is for, and each
+   * one adds itself to the outline.
+   */
+  test('lists every section that can be asked for, and adds them on click', async ({ page }) => {
+    await stubBrain(page);
+    await openBrief(page);
+    await page.locator('[data-step="2"]').click();
+
+    const reference = page.locator('.outline-reference');
+    await expect(reference).toBeVisible();
+    // Open to begin with: somebody who has not written an outline is exactly who
+    // needs to see the list.
+    expect(await reference.evaluate((node) => node.open)).toBe(true);
+    const sections = page.locator('.outline-section');
+    const families = await page.evaluate(() => window.__SBS_TEST_API.brain.sectionFamilies.length);
+    await expect(sections).toHaveCount(families);
+    await expect(reference.locator('summary')).toContainText(`${families} registered sections`);
+    // Each one names itself and says what it is for, so the list is a reference and
+    // not just a set of labels.
+    for (const locator of [sections.first(), sections.last()]) {
+      expect((await locator.locator('b').textContent()).trim().length).toBeGreaterThan(2);
+      expect((await locator.locator('span').textContent()).trim().length).toBeGreaterThan(15);
+    }
+
+    const clickSection = async (label) => {
+      await page.locator('.outline-section', { has: page.locator(`b:text-is("${label}")`) }).first().click();
+    };
+    // A flow is a sequence, so the same family may be asked for twice.
+    for (const label of ['Hero', 'Cards', 'Statistics', 'Cards']) await clickSection(label);
+    await expect(page.locator('#brain-outline')).toHaveValue('1. Hero\n2. Cards\n3. Statistics\n4. Cards');
+    // The list must not collapse as sections are added, or a second click is
+    // impossible — which was the whole point of it.
+    expect(await reference.evaluate((node) => node.open)).toBe(true);
+    await expect(page.locator('.outline-section.is-used')).toHaveCount(3);
+
+    // Closed on request, and it stays closed through the re-render.
+    await reference.locator('summary').click();
+    await expect.poll(() => reference.evaluate((node) => node.open)).toBe(false);
+    await expect(sections.first()).toBeHidden();
+    await reference.locator('summary').click();
+    await expect.poll(() => reference.evaluate((node) => node.open)).toBe(true);
+
+    // And what was clicked maps to real registered families.
+    await page.locator('[data-brain-action="plan-outline"]').click();
+    await expect.poll(() => page.evaluate(() => (window.__SBS_TEST_API.state.project.brain.outlinePlan?.steps || []).length)).toBeGreaterThan(0);
+  });
+
   test('a custom outline flow survives a reload', async ({ page }) => {
     await stubBrain(page);
     await openBrief(page);
@@ -358,16 +456,29 @@ test.describe('the AI flow planner (Step 03)', () => {
 
     // `customFlows` is initialised to [] on every load, so wait for the saved
     // flow id itself: autosave is debounced and a reload before it flushes
-    // would be testing the debounce, not the persistence.
+    // would be testing the debounce, not the persistence. The flow the concept
+    // is on lives inside its workspace; the typed flow itself is project-level,
+    // because all three concepts may use it.
     await expect.poll(() => page.evaluate(() => {
-      const saved = JSON.parse(localStorage.getItem('sbs-dst-page-builder-v2') || '{}');
-      return [saved.project?.flowId, (saved.project?.customFlows || []).map((flow) => flow.id).join(',')].join('|');
+      const saved = JSON.parse(localStorage.getItem('sbs-builder-v3') || '{}');
+      const set = saved.project?.conceptSet;
+      const active = set?.concepts?.[set?.activeConceptId];
+      return [active?.flowId, (saved.project?.customFlows || []).map((flow) => flow.id).join(',')].join('|');
     })).toBe(`${flowId}|${flowId}`);
     await page.reload();
     await page.waitForFunction(() => Boolean(window.__SBS_TEST_API));
     // A flow id that no longer resolves would silently reset the page to flow one.
     await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.flowId)).toBe(flowId);
-    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.flowIds.includes(window.__SBS_TEST_API.state.project.flowId))).toBe(true);
+    /*
+     * It resolves through the project, not through the catalogue.
+     *
+     * A typed flow used to be pushed onto `DATA.flows` on load, which made it
+     * indistinguishable from the 35 authored flows and grew the catalogue for
+     * every project a session opened. It now stays on the project and `allFlows()`
+     * is the only view that joins the two.
+     */
+    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.allFlows().some((flow) => flow.id === window.__SBS_TEST_API.state.project.flowId))).toBe(true);
+    expect(await page.evaluate(() => window.__SBS_TEST_API.flowIds.includes(window.__SBS_TEST_API.state.project.flowId))).toBe(false);
   });
 
   test('refuses to build a flow with nothing mapped', async ({ page }) => {

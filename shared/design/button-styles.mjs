@@ -23,8 +23,8 @@ export const BUTTON_STYLES = Object.freeze([
   Object.freeze({
     id: 'solid-shift',
     label: 'Solid Shift',
-    summary: 'The dependable one. A solid button that swaps to the dark tone and lifts on hover.',
-    hover: 'Colour inverts and the button lifts',
+    summary: 'The dependable one. A solid button that swaps to the dark tone and deepens its shadow on hover.',
+    hover: 'Colour inverts and the shadow deepens',
     bestFor: 'Any page. Start here if you are not sure.',
   }),
   Object.freeze({
@@ -45,7 +45,7 @@ export const BUTTON_STYLES = Object.freeze([
     id: 'pill-glow',
     label: 'Pill Glow',
     summary: 'Fully rounded with a soft coloured glow that blooms under the cursor.',
-    hover: 'A soft glow blooms and the button grows slightly',
+    hover: 'A soft glow blooms and the button grows a little in place',
     bestFor: 'Friendly, human, consumer and healthcare brands.',
   }),
   Object.freeze({
@@ -129,7 +129,7 @@ const BASE = `
 const STYLE_CSS = Object.freeze({
   'solid-shift': `
 #sbs-site .c-btn.-primary,#sbs-site .c-btn.-primary-inverted{border:1px solid transparent}
-#sbs-site .c-btn.-primary:hover,#sbs-site .c-btn.-secondary:hover,#sbs-site .c-btn.-primary-inverted:hover,#sbs-site .c-btn.-secondary-inverted:hover{transform:translateY(calc(-1 * var(--sbs-hover-lift)));box-shadow:0 calc(var(--sbs-hover-lift) + 4px) calc(var(--sbs-hover-lift) * 3 + 12px) color-mix(in srgb,var(--dst--primary-color3) 22%,transparent)}
+#sbs-site .c-btn.-primary:hover,#sbs-site .c-btn.-secondary:hover,#sbs-site .c-btn.-primary-inverted:hover,#sbs-site .c-btn.-secondary-inverted:hover{transform:none;box-shadow:0 calc(var(--sbs-hover-lift) + 6px) calc(var(--sbs-hover-lift) * 3 + 18px) color-mix(in srgb,var(--dst--primary-color3) 30%,transparent)}
 #sbs-site .c-btn.-secondary{border-width:var(--sbs-border-width)}
 #sbs-site .c-btn.-link{border-bottom:2px solid color-mix(in srgb,currentColor 35%,transparent);text-decoration:none;padding-bottom:.2em}
 #sbs-site .c-btn.-link:hover{border-bottom-color:currentColor;color:var(--dst--primary-color2)}
@@ -139,7 +139,7 @@ const STYLE_CSS = Object.freeze({
 #sbs-site .c-btn:not(.-link):before{content:"";position:absolute;inset:0;z-index:1;background:var(--sbs-btn-sweep,var(--dst--primary-color3));transform:scaleX(0);transform-origin:left center;transition:transform var(--sbs-motion-duration) var(--sbs-motion-ease)}
 #sbs-site .c-btn:not(.-link):hover:before{transform:scaleX(1)}
 #sbs-site .c-btn.-primary{--sbs-btn-sweep:var(--dst--primary-color3)}
-#sbs-site .c-btn.-primary:hover{color:var(--dst--secondary-color1,#fff);background:var(--dst--primary-color2)}
+#sbs-site .c-btn.-primary:hover{color:var(--sbs-on-ink,#fff);background:var(--dst--primary-color2)}
 #sbs-site .c-btn.-secondary{--sbs-btn-sweep:var(--dst--base-text-color);border-width:var(--sbs-border-width)}
 #sbs-site .c-btn.-secondary:hover{color:var(--dst--body-bg)}
 #sbs-site .c-btn.-primary-inverted{--sbs-btn-sweep:var(--dst--primary-color2)}
@@ -165,10 +165,10 @@ const STYLE_CSS = Object.freeze({
   'pill-glow': `
 #sbs-site .c-btn:not(.-link){--sbs-btn-radius:999px;--sbs-btn-pad:1.05em 2.05em;overflow:visible}
 #sbs-site .c-btn.-primary{box-shadow:0 6px 18px color-mix(in srgb,var(--dst--primary-color2) 26%,transparent)}
-#sbs-site .c-btn.-primary:hover{transform:translateY(calc(-1 * var(--sbs-hover-lift))) scale(1.025);box-shadow:0 calc(var(--sbs-hover-lift) + 10px) calc(var(--sbs-hover-lift) * 3 + 26px) color-mix(in srgb,var(--dst--primary-color2) 46%,transparent)}
+#sbs-site .c-btn.-primary:hover{transform:scale(1.03);box-shadow:0 calc(var(--sbs-hover-lift) + 10px) calc(var(--sbs-hover-lift) * 3 + 26px) color-mix(in srgb,var(--dst--primary-color2) 46%,transparent)}
 #sbs-site .c-btn.-secondary{background:color-mix(in srgb,var(--dst--primary-color2) 9%,transparent);border-color:transparent}
-#sbs-site .c-btn.-secondary:hover{background:color-mix(in srgb,var(--dst--primary-color2) 20%,transparent);color:var(--dst--base-text-color);border-color:transparent;transform:translateY(calc(-1 * var(--sbs-hover-lift)))}
-#sbs-site .c-btn.-primary-inverted:hover,#sbs-site .c-btn.-secondary-inverted:hover{transform:translateY(calc(-1 * var(--sbs-hover-lift))) scale(1.025);box-shadow:0 calc(var(--sbs-hover-lift) + 10px) calc(var(--sbs-hover-lift) * 3 + 26px) rgba(255,255,255,.28)}
+#sbs-site .c-btn.-secondary:hover{background:color-mix(in srgb,var(--dst--primary-color2) 20%,transparent);color:var(--dst--base-text-color);border-color:transparent;transform:scale(1.03)}
+#sbs-site .c-btn.-primary-inverted:hover,#sbs-site .c-btn.-secondary-inverted:hover{transform:scale(1.03);box-shadow:0 calc(var(--sbs-hover-lift) + 10px) calc(var(--sbs-hover-lift) * 3 + 26px) rgba(255,255,255,.28)}
 #sbs-site .c-btn.-link{padding:.42em .95em;margin-inline:-.95em;border-radius:999px}
 #sbs-site .c-btn.-link:before{content:"";position:absolute;inset:0;z-index:0;border-radius:999px;background:color-mix(in srgb,var(--dst--primary-color2) 14%,transparent);transform:scale(.6);opacity:0;transition:transform var(--sbs-motion-duration) var(--sbs-motion-ease),opacity var(--sbs-motion-duration) var(--sbs-motion-ease)}
 #sbs-site .c-btn.-link:hover:before{transform:scale(1);opacity:1}
@@ -179,9 +179,9 @@ const STYLE_CSS = Object.freeze({
 #sbs-site .c-btn:not(.-link):before{content:"";position:absolute;inset:0;z-index:1;background:var(--sbs-btn-flood,var(--dst--primary-color2));clip-path:circle(.42em at 1.62em 50%);transition:clip-path var(--sbs-motion-duration) var(--sbs-motion-ease)}
 #sbs-site .c-btn:not(.-link):hover:before{clip-path:circle(150% at 1.62em 50%)}
 #sbs-site .c-btn.-primary{color:var(--dst--base-text-color)}
-#sbs-site .c-btn.-primary:hover{color:#fff;background:transparent;border-color:var(--dst--primary-color2)}
+#sbs-site .c-btn.-primary:hover{color:var(--sbs-on-accent,#fff);background:transparent;border-color:var(--dst--primary-color2)}
 #sbs-site .c-btn.-secondary{--sbs-btn-flood:var(--dst--primary-color3)}
-#sbs-site .c-btn.-secondary:hover{color:#fff;background:transparent;border-color:var(--dst--primary-color3)}
+#sbs-site .c-btn.-secondary:hover{color:var(--sbs-on-ink,#fff);background:transparent;border-color:var(--dst--primary-color3)}
 #sbs-site .c-btn.-primary-inverted,#sbs-site .c-btn.-secondary-inverted{color:#fff;--sbs-btn-flood:#fff}
 #sbs-site .c-btn.-primary-inverted:hover,#sbs-site .c-btn.-secondary-inverted:hover{color:var(--dst--primary-color3);background:transparent}
 #sbs-site .c-btn.-link{--sbs-btn-weight:600;padding-bottom:.3em}
@@ -199,7 +199,7 @@ const STYLE_CSS = Object.freeze({
 #sbs-site .c-btn:not(.-link):after{bottom:0;transform:translateY(101%)}
 #sbs-site .c-btn:not(.-link):hover:before,#sbs-site .c-btn:not(.-link):hover:after{transform:translateY(0)}
 #sbs-site .c-btn.-primary{--sbs-btn-split:var(--dst--primary-color3);border-color:var(--dst--primary-color2)}
-#sbs-site .c-btn.-primary:hover{color:#fff;background:var(--dst--primary-color2);border-color:var(--dst--primary-color3)}
+#sbs-site .c-btn.-primary:hover{color:var(--sbs-on-ink,#fff);background:var(--dst--primary-color2);border-color:var(--dst--primary-color3)}
 #sbs-site .c-btn.-secondary{--sbs-btn-split:var(--dst--base-text-color)}
 #sbs-site .c-btn.-secondary:hover{color:var(--dst--body-bg)}
 #sbs-site .c-btn.-primary-inverted{--sbs-btn-split:var(--dst--primary-color2)}
@@ -217,8 +217,8 @@ const STYLE_CSS = Object.freeze({
 #sbs-site .c-btn:not(.-link):before{content:"";position:absolute;inset:0;z-index:1;background:var(--sbs-btn-wedge,var(--dst--primary-color2));transform:translateX(-101%);transition:transform var(--sbs-motion-duration) var(--sbs-motion-ease)}
 #sbs-site .c-btn:not(.-link):hover{clip-path:polygon(0 0,calc(100% - var(--sbs-btn-cut)) 0,100% var(--sbs-btn-cut),100% 100%,var(--sbs-btn-cut) 100%,0 calc(100% - var(--sbs-btn-cut)))}
 #sbs-site .c-btn:not(.-link):hover:before{transform:translateX(0)}
-#sbs-site .c-btn.-primary{color:#fff;background:var(--dst--primary-color3);border-color:var(--dst--primary-color3);--sbs-btn-wedge:var(--dst--primary-color2)}
-#sbs-site .c-btn.-primary:hover{color:#fff;background:var(--dst--primary-color3);border-color:var(--dst--primary-color2)}
+#sbs-site .c-btn.-primary{color:var(--sbs-on-ink,#fff);background:var(--dst--primary-color3);border-color:var(--dst--primary-color3);--sbs-btn-wedge:var(--dst--primary-color2)}
+#sbs-site .c-btn.-primary:hover{color:var(--sbs-on-accent,#fff);background:var(--dst--primary-color3);border-color:var(--dst--primary-color2)}
 #sbs-site .c-btn.-secondary{--sbs-btn-wedge:var(--dst--base-text-color)}
 #sbs-site .c-btn.-secondary:hover{color:var(--dst--body-bg)}
 #sbs-site .c-btn.-primary-inverted{--sbs-btn-wedge:var(--dst--primary-color2)}
@@ -272,9 +272,9 @@ const STYLE_CSS = Object.freeze({
 #sbs-site .c-btn:not(.-link):before{content:"";position:absolute;left:-30%;right:-30%;top:-20%;bottom:-20%;z-index:1;background:var(--sbs-btn-ink);transform:translate(-118%,60%) skewX(-18deg);transition:transform var(--sbs-motion-duration) var(--sbs-motion-ease)}
 #sbs-site .c-btn:not(.-link):hover:before{transform:translate(0,0) skewX(-18deg)}
 #sbs-site .c-btn.-primary{--sbs-btn-ink:var(--dst--primary-color3)}
-#sbs-site .c-btn.-primary:hover{color:#fff;background:var(--dst--primary-color2);border-color:var(--dst--primary-color3)}
+#sbs-site .c-btn.-primary:hover{color:var(--sbs-on-ink,#fff);background:var(--dst--primary-color2);border-color:var(--dst--primary-color3)}
 #sbs-site .c-btn.-secondary{--sbs-btn-ink:var(--dst--primary-color2)}
-#sbs-site .c-btn.-secondary:hover{color:#fff;border-color:var(--dst--primary-color2)}
+#sbs-site .c-btn.-secondary:hover{color:var(--sbs-on-accent,#fff);border-color:var(--dst--primary-color2)}
 #sbs-site .c-btn.-primary-inverted{--sbs-btn-ink:var(--dst--primary-color2)}
 #sbs-site .c-btn.-primary-inverted:hover{color:#fff}
 #sbs-site .c-btn.-secondary-inverted{--sbs-btn-ink:#fff}
@@ -321,12 +321,12 @@ export function buttonStylePreviewMarkup(styleId, { primary = 'Book a call', sec
  * supplies the palette and dial tokens as inline custom properties.
  */
 const EDITOR_BASE = `
-.btn-style-preview{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:11px}
+.btn-style-preview{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:11px;--sbs-on-accent:#fff;--sbs-on-ink:#fff}
 .btn-style-preview .c-btn{display:inline-flex;align-items:center;justify-content:center;gap:.55em;font-family:inherit;font-size:1em;line-height:1;cursor:default;text-decoration:none;color:var(--dst--base-text-color,#181a1d);white-space:nowrap}
-.btn-style-preview .c-btn.-primary{color:#fff;background:var(--dst--primary-color2,#ed5b38);border-color:var(--dst--primary-color2,#ed5b38)}
-.btn-style-preview .c-btn.-primary:hover{color:#fff;background:var(--dst--primary-color3,#181a1d)}
+.btn-style-preview .c-btn.-primary{color:var(--sbs-on-accent,#fff);background:var(--dst--primary-color2,#ed5b38);border-color:var(--dst--primary-color2,#ed5b38)}
+.btn-style-preview .c-btn.-primary:hover{color:var(--sbs-on-ink,#fff);background:var(--dst--primary-color3,#181a1d)}
 .btn-style-preview .c-btn.-secondary{color:var(--dst--base-text-color,#181a1d);background:transparent;border-color:var(--dst--base-text-color,#181a1d)}
-.btn-style-preview .c-btn.-secondary:hover{color:var(--dst--body-bg,#fff);background:var(--dst--base-text-color,#181a1d)}
+.btn-style-preview .c-btn.-secondary:hover{color:var(--sbs-on-ink,var(--dst--body-bg,#fff));background:var(--dst--base-text-color,#181a1d)}
 .btn-style-preview .c-btn.-link{background:transparent;border:0;color:var(--dst--primary-color2,#ed5b38)}
 `;
 
