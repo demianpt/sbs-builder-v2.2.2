@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { measureWhen } from './support/preview.mjs';
 import { useAdvancedBuilder } from './support/builder-mode.mjs';
 
 async function openDirection(page) {
@@ -95,8 +96,9 @@ test.describe('button families', () => {
     const seen = new Map();
     for (const id of ids) {
       await page.locator(`.btn-style-card:has(input[value="${id}"])`).click();
-      await expect.poll(() => previewButton(page).then((value) => value.attribute)).toBe(id);
-      const shape = await previewButton(page);
+      // Measured in the same reading that confirms the family landed: a second
+      // round trip can catch the preview mid-rebuild and read a default radius.
+      const shape = await measureWhen(() => previewButton(page), (value) => value.attribute === id);
       seen.set(id, `${shape.radius}|${Math.round(Number.parseFloat(shape.paddingLeft))}|${shape.boxShadow.slice(0, 20)}`);
     }
     expect(new Set(seen.values()).size).toBeGreaterThanOrEqual(4);

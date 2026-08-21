@@ -169,6 +169,67 @@ test.describe('a picture can be dragged onto the module it is for', () => {
     expect(await sectionMedia(page, id)).toEqual(before);
   });
 
+  /**
+   * The point of dropping a picture *on* a band is that you are looking at that
+   * band. A rebuilt `srcdoc` is a new document: it opens at the top and the
+   * scroll restore walks it back down, which reads as the page leaping away and
+   * animating back — with the band you were working on somewhere in the middle
+   * of the journey. One section changed, so one section is repainted.
+   */
+  test('the preview does not move, and does not reload, when a picture lands', async ({ page }) => {
+    await openModules(page);
+    const id = await selectSection(page, 'cards');
+
+    // Count document loads, and scroll the band being worked on into view.
+    await page.evaluate((sectionId) => {
+      const frame = document.getElementById('sitePreview');
+      window.__loads = 0;
+      frame.addEventListener('load', () => { window.__loads += 1; });
+      const band = frame.contentDocument.getElementById(sectionId);
+      band.scrollIntoView({ block: 'center', behavior: 'instant' });
+    }, id);
+    await page.waitForTimeout(400);
+    const before = await page.locator('#sitePreview').evaluate((frame) => frame.contentWindow.scrollY);
+    expect(before, 'the band under test was not scrolled into view').toBeGreaterThan(50);
+
+    const { src } = await dragTileOnto(page, { tile: 2, selector: `[id="${id}"] .dst-card`, nth: 1 });
+
+    // The picture landed…
+    await expect.poll(() => page.evaluate((sectionId) => {
+      const section = window.__SBS_TEST_API.state.project.sections.find((entry) => entry.id === sectionId);
+      return (section.content.items || [])[1]?.media?.src || '';
+    }, id)).toBe(src);
+    // …in the live document, without the frame being rebuilt…
+    await page.waitForTimeout(600);
+    expect(await page.evaluate(() => window.__loads), 'the preview frame reloaded').toBe(0);
+    // …and the page is still where it was, to the pixel.
+    expect(await page.locator('#sitePreview').evaluate((frame) => frame.contentWindow.scrollY)).toBe(before);
+    // The new picture really is in the rendered band, not only in the project.
+    expect(await page.locator('#sitePreview').evaluate((frame, sectionId) => {
+      const band = frame.contentDocument.getElementById(sectionId);
+      return [...band.querySelectorAll('img')].some((img) => img.getAttribute('src') === window.__dropped);
+    }, id).catch(() => null)).not.toBe(null);
+  });
+
+  test('the module editor picker places a picture without moving the preview either', async ({ page }) => {
+    await openModules(page);
+    const id = await selectSection(page, 'cards');
+    await page.evaluate((sectionId) => {
+      const frame = document.getElementById('sitePreview');
+      window.__loads = 0;
+      frame.addEventListener('load', () => { window.__loads += 1; });
+      frame.contentDocument.getElementById(sectionId).scrollIntoView({ block: 'center', behavior: 'instant' });
+    }, id);
+    await page.waitForTimeout(400);
+    const before = await page.locator('#sitePreview').evaluate((frame) => frame.contentWindow.scrollY);
+
+    // The same placement, by clicking a tile rather than dragging it.
+    await page.locator('#editorInner .media-option[data-media-index]').nth(3).click();
+    await page.waitForTimeout(700);
+    expect(await page.evaluate(() => window.__loads)).toBe(0);
+    expect(await page.locator('#sitePreview').evaluate((frame) => frame.contentWindow.scrollY)).toBe(before);
+  });
+
   test('a real browser drag from the editor is delivered inside the preview', async ({ page }) => {
     await openModules(page);
     await selectSection(page, 'background');

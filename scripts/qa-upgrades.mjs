@@ -206,7 +206,7 @@ check('AI Brain prompt explicitly asks for exactly five flows', () => {
 
 const result = {
   passed: assertions.every((entry) => entry.passed),
-  version: '2.7.0',
+  version: '2.7.1',
   assertions,
   summary: {
     passed: assertions.filter((entry) => entry.passed).length,

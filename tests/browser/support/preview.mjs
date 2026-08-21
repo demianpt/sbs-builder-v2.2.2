@@ -32,3 +32,27 @@ export async function previewSettled(page, { quietFor = 600, timeout = 20_000 } 
   }
   throw new Error('the preview never stopped rebuilding');
 }
+
+/**
+ * Reads a measurement, and returns the one that satisfied the condition.
+ *
+ * The flaky shape this replaces is everywhere: poll until the change has landed,
+ * then measure in a *second* round trip. The preview is rebuilt on a debounce,
+ * so between those two calls the document can be replaced — and the geometry
+ * that comes back belongs to a page mid-swap. Radii read as the default, widths
+ * read as the pre-layout value, and the test fails on a page that was correct
+ * before and after the moment it was looked at.
+ *
+ * Polling on the value that is about to be asserted, and keeping *that* reading,
+ * removes the gap entirely.
+ */
+export async function measureWhen(read, ok, { timeout = 15_000, every = 120 } = {}) {
+  const started = Date.now();
+  let last = null;
+  while (Date.now() - started < timeout) {
+    last = await read();
+    if (last && ok(last)) return last;
+    await new Promise((resolve) => setTimeout(resolve, every));
+  }
+  throw new Error(`the measurement never satisfied the condition; last reading was ${JSON.stringify(last)}`);
+}

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { measureWhen } from './support/preview.mjs';
 import { useAdvancedBuilder } from './support/builder-mode.mjs';
 
 /**
@@ -40,7 +41,9 @@ async function useHeroPattern(page, patternId, until) {
     const api = window.__SBS_TEST_API;
     return api.state.project.sections.find((section) => section.family === 'hero').patternId;
   })).toBe(patternId);
-  await expect.poll(() => measure(page).then((value) => Boolean(value?.patternReady && (!until || until(value))))).toBe(true);
+  // Returns the reading that satisfied the wait, so callers measure the page
+  // that was checked rather than asking again and risking a rebuild in between.
+  return measureWhen(() => measure(page), (value) => Boolean(value.patternReady && (!until || until(value))));
 }
 
 function measure(page) {
@@ -75,11 +78,9 @@ function measure(page) {
 test.describe('hero fit', () => {
   test('a hero with a centred heading centres its inner', async ({ page }) => {
     await boot(page);
-    await useHeroPattern(page, 'sbs-hero-p30-v1', (hero) => hero.centred);
-    // The preview settles over a couple of frames after a pattern swap, so the
-    // gap is polled rather than read once.
-    await expect.poll(() => measure(page).then((hero) => Math.abs(hero.leftGap - hero.rightGap) <= 1)).toBe(true);
-    const hero = await measure(page);
+    // One reading, taken once the swap has settled: the centring is what is
+    // being waited for and what is then asserted.
+    const hero = await useHeroPattern(page, 'sbs-hero-p30-v1', (entry) => entry.centred && Math.abs(entry.leftGap - entry.rightGap) <= 1);
     expect(hero.centred).toBe(true);
     // The inner is still capped, but the leftover room is split evenly.
     expect(hero.innerWidth).toBeLessThan(hero.containerWidth);
@@ -88,9 +89,7 @@ test.describe('hero fit', () => {
 
   test('a hero with a left-aligned heading stays left-aligned', async ({ page }) => {
     await boot(page);
-    await useHeroPattern(page, 'sbs-hero-p5-v3', (hero) => !hero.centred && !hero.hasContent2);
-    await expect.poll(() => measure(page).then((hero) => hero.leftGap)).toBeLessThanOrEqual(1);
-    const hero = await measure(page);
+    const hero = await useHeroPattern(page, 'sbs-hero-p5-v3', (entry) => !entry.centred && !entry.hasContent2 && entry.leftGap <= 1);
     expect(hero.centred).toBe(false);
     expect(hero.rightGap).toBeGreaterThan(100);
   });
@@ -98,8 +97,7 @@ test.describe('hero fit', () => {
   test('a two-column hero uses the authored width instead of the single-column cap', async ({ page }) => {
     await boot(page);
     for (const patternId of ['sbs-hero-p1-v1', 'sbs-hero-p1-v3']) {
-      await useHeroPattern(page, patternId, (hero) => hero.hasContent2);
-      const hero = await measure(page);
+      const hero = await useHeroPattern(page, patternId, (entry) => entry.hasContent2);
       expect(hero.hasContent2, patternId).toBe(true);
       // The cap was min(86rem, 70vw) — 860px inside a 1440px container.
       expect(hero.innerWidth, patternId).toBeGreaterThan(1200);

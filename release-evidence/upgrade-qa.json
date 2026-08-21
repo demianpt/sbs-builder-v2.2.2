@@ -1,6 +1,6 @@
 {
   "passed": true,
-  "version": "2.7.0",
+  "version": "2.7.1",
   "assertions": [
     {
       "label": "Shutterstock full URL extracts the path asset id, not the tracking id",

@@ -729,7 +729,7 @@ setTimeout(updateDevice,100);
 (function(){
 'use strict';
 
-var SBS_BUILDER_VERSION='2.7.0';
+var SBS_BUILDER_VERSION='2.7.1';
 var legacySiteCssV1=siteCss;
 var legacyApplyArchetypeV1=applyArchetype;
 var legacyValidateProjectV1=validateProject;
@@ -4933,6 +4933,7 @@ byId('editorInner').addEventListener('click',function(event){
     section.content.media=Array.isArray(section.content.media)?section.content.media:[];
     section.content.media[0]=media;
   },{message:asset.kind==='video'?'Video placed on this module':'Image placed on this module'});
+  v11PaintInPlace(section);
 });
 
 /* ================================================================== *
@@ -5082,6 +5083,7 @@ byId('editorInner').addEventListener('click',function(event){
   var choice=DATA.media[Number(trigger.dataset.slotLibrary)];
   if(!slot||!choice)return;
   mutate(function(){v7SetSlotMedia(section,slot,asMedia(choice))},{message:'Placeholder placed on this slot'});
+  v11PaintInPlace(section);
 });
 
 /* ---------------------------------------------------------------- *
@@ -6326,6 +6328,18 @@ function v11TileMedia(tile){
   return choice?{media:asMedia(choice),kind:isVideoMedia(choice)?'video':'image'}:null;
 }
 
+/*
+ * The placeholder picker's own handler is in the builder's first layer, which is
+ * outside this scope — so the repaint follows it as a second listener rather
+ * than by reaching into it. Registered later, so it runs after the mutation it
+ * is following and cancels the rebuild that mutation queued.
+ */
+byId('editorInner').addEventListener('click',function(event){
+  if(!event.target.closest||!event.target.closest('[data-media-index]'))return;
+  var section=state.project.sections.find(function(entry){return entry.id===state.selectedSectionId});
+  if(section)v11PaintInPlace(section);
+});
+
 byId('editorInner').addEventListener('dragstart',function(event){
   var tile=event.target.closest?event.target.closest(V11_TILE_SELECTOR):null;
   var payload=tile?v11TileMedia(tile):null;
@@ -6397,6 +6411,29 @@ var V11_MARK_STYLE={
   'sbs-drop-hit':{outline:'3px solid #ed5b38','outline-offset':'-3px','box-shadow':'0 0 0 3px rgba(255,255,255,.65)'},
   'sbs-drop-deny':{outline:'3px solid #b4472f','outline-offset':'-3px'}
 };
+
+/**
+ * Repaints one section in the live preview instead of rebuilding the frame.
+ *
+ * A rebuilt `srcdoc` is a new document: it starts at the top, and the scroll
+ * restore then walks it back down. That reads as the page jumping away and
+ * animating back, and it takes the band the pointer is on with it — which is
+ * exactly the wrong thing to do to somebody who has just dropped a picture on
+ * that band and is looking at it.
+ *
+ * A picture landing in a slot changes one section, so `v6RepaintSection` can
+ * swap that section in place. The rebuild `mutate` queued behind it is then not
+ * only unnecessary but the whole problem, so it is cancelled.
+ */
+function v11PaintInPlace(section){
+  if(!section||!v6RepaintSection(section))return false;
+  clearTimeout(previewTimer);
+  previewTimer=null;
+  // The swapped element is a new one, so the overlay is measuring a node that
+  // no longer exists.
+  v6Track();
+  return true;
+}
 
 var v11Marked=[];
 function v11ClearDropMarks(){
@@ -6483,6 +6520,7 @@ function v11BindMediaDrop(doc){
     mutate(function(){
       v7SetSlotMedia(found.section,hit.slot,payload.media);
     },{message:(payload.kind==='video'?'Video':'Image')+' placed on '+where+' of '+(familyLabels[found.section.family]||found.section.family)});
+    v11PaintInPlace(found.section);
   });
 }
 

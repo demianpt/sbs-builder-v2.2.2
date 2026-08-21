@@ -1,5 +1,67 @@
 # Release notes
 
+## 2.7.1 — The preview stays where you are
+
+### A dropped picture no longer throws the page to the top
+
+Dropping a picture on a band worked, and then the preview jumped to the top of
+the page and animated its way back down. The band you had just dropped on — the
+one you were looking at, the reason you dropped there — went with it.
+
+The cause was a full rebuild for a one-section change. A rebuilt `srcdoc` is a
+new document: it opens at the top, and the scroll restore then walks it back,
+which is exactly what that jump-and-glide is. `v6RepaintSection` already existed
+for precisely this, with a comment saying a rebuild "is precisely what would jump
+the page to the top and re-animate the whole document" — the preview arrows have
+used it since 2.5.0. A picture landing in a slot changes one section, so that
+section is now swapped in place and the rebuild queued behind it is cancelled.
+
+Every path that places a picture takes it: the drag-and-drop, the module editor's
+found-imagery picker, the per-slot placeholder picker and the placeholder
+library. Held by two tests that assert the frame's load count stays at zero and
+its scroll position is unchanged to the pixel.
+
+One thing worth recording: the first attempt called the repaint from the
+builder's first layer, which sits *outside* the IIFE that defines it — a
+`ReferenceError` thrown inside a click listener, silently swallowed by the
+browser, leaving the mutation applied and the rebuild un-cancelled. The repaint
+for that path is attached as its own listener from inside the right scope.
+
+### The CSS the minifier had been complaining about
+
+`.brand-mark` was followed by a dangling `border:2px solid #fbfaf7}` outside any
+rule — present since the first commit, so it has never rendered. esbuild warned
+on every build. Removed rather than folded into the rule: the app's known
+appearance is the one without it.
+
+### The legibility control finally controls something
+
+`legibility.spec.mjs` asserts that no archetype produces an unreadable band. That
+claim is worth nothing unless its negative control fails when a band *is*
+unreadable — and that control had been failing since 2.4.0, because it tried to
+force the failure through the project model and the model kept defending itself.
+Palette repair puts the ink back. The derived tokens read text colour off the
+ground rather than from the ink, so `ink = bg` changes nothing on an inverted
+band. Every band with a photograph behind it inverts its copy and is excluded
+from measurement anyway. All three of those are the product being right, and none
+of them leaves a way to say "unreadable" in the model.
+
+So the sabotage is applied where the audit looks: the rendered page. Each line in
+one band is painted the colour of *its own* ground — per line, because a slider's
+card sits on its own opaque panel, and painting its title the colour of the band
+behind the panel makes it more readable, not less — using the audit's own
+selector, now exposed for the purpose. The control then requires that band and no
+other to be named, under 1.1:1, with the preflight gate failing and quoting it.
+
+### Two more flakes, one shape
+
+`button-styles` and `hero-fit` each confirmed a change had landed and then
+measured the geometry in a *second* round trip, which can catch the preview
+mid-rebuild: a radius reads as the default, a width as the pre-layout value, and
+the test fails on a page that was correct before and after the moment it was
+looked at. Both now poll on the reading they are about to assert and keep it
+(`measureWhen`). The full suite is green twice over.
+
 ## 2.7.0 — One button
 
 "Read my brief and build 3 concepts" was three buttons on three steps, and the
