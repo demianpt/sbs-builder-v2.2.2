@@ -381,13 +381,26 @@ test.describe('the AI controls', () => {
   });
 });
 
-test.describe('the copywriter on the first step', () => {
-  test('drafts and applies the page copy without leaving Step 01', async ({ page }) => {
+test.describe('the one button on the first step', () => {
+  test('reads the brief, writes the copy and puts it on the page in one press', async ({ page }) => {
     await page.route('**/api/brief/**', async (route) => {
       const url = route.request().url();
       const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
       if (url.endsWith('/status')) {
         return json({ provider: 'ollama', model: 'gemma4:31b', configured: true, available: true, modelAvailable: true });
+      }
+      if (url.endsWith('/concepts')) {
+        return json({
+          source: 'ai', degraded: null, model: 'gemma4:31b', confidence: 0.9, missingFields: [],
+          readback: { business: 'A dental practice.', audience: 'Families.', offer: 'Gentle care.', goal: 'Book online.', voice: 'Calm.' },
+          fields: { industry: 'Family dental practice', audience: 'Local families', goal: 'Book online', offer: 'Gentle care', tone: 'Calm', keywords: 'gentle', clientName: 'Harbour Dental' },
+          concepts: [
+            { name: 'Calm', archetypeKey: 'D', preset: 'calm', buttonStyle: 'solid-shift', dialOverrides: {}, why: 'w' },
+            { name: 'Warm', archetypeKey: 'C', preset: 'friendly', buttonStyle: 'pill-glow', dialOverrides: {}, why: 'w' },
+            { name: 'Bold', archetypeKey: 'B', preset: 'bold', buttonStyle: 'sweep-fill', dialOverrides: {}, why: 'w' },
+          ],
+          flows: [{ id: 'B3', reason: 'Proof first.', fit: 0.9 }],
+        });
       }
       if (url.endsWith('/content')) {
         const { families } = JSON.parse(route.request().postData());
@@ -401,26 +414,16 @@ test.describe('the copywriter on the first step', () => {
       return json({});
     });
     await boot(page);
+    await page.evaluate(() => window.__SBS_TEST_API.simple.setMode('simple', { force: true }));
+    await page.locator('#simple-brief').fill('Harbour Dental is a family dental practice in Portsmouth. We want nervous adults to book online.');
 
-    // Three concepts on screen, one chosen — the state the copywriter needs.
-    await page.evaluate(() => {
-      const api = window.__SBS_TEST_API;
-      const simple = api.simple.ensure();
-      simple.briefText = 'Harbour Dental is a family dental practice in Portsmouth. We want them to book online.';
-      simple.concepts = api.simple.normalizeConcepts([
-        { name: 'Calm', archetypeKey: 'D', preset: 'calm', buttonStyle: 'solid-shift', dialOverrides: {}, why: 'w' },
-      ]);
-      simple.active = 0;
-      api.simple.setMode('simple', { force: true });
-    });
+    // One press. There is no draft to review and no second button to apply it:
+    // both were steps that had to happen anyway, so neither is a step now.
+    await page.locator('[data-brain-action="build-concepts"]').click();
+    await expect(page.locator('.concept-card')).toHaveCount(3);
+    await expect(page.locator('#editorInner [data-brain-action="write-content"]')).toHaveCount(0);
+    await expect(page.locator('#editorInner [data-brain-action="apply-content"]')).toHaveCount(0);
 
-    // The copywriter is on Step 01, below the concepts — not two steps away.
-    const write = page.locator('#editorInner [data-brain-action="write-content"]');
-    await expect(write).toHaveCount(1);
-    await write.click();
-
-    await expect(page.locator('.brain-draft')).toBeVisible();
-    await page.locator('[data-brain-action="apply-content"]').click();
     await expect
       .poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.sections[0].content.title))
       .toBe('Copy for hero');

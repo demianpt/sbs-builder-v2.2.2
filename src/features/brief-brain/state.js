@@ -69,7 +69,11 @@ function isLive(slice, busyStatuses) {
 
 /** Drops a stale busy status left behind by a reload, and only that. */
 function settleStaleStatus(slice, busyStatuses) {
-  if (busyStatuses.includes(slice.status) && !slice[LIVE_FLAG]) slice.status = 'idle';
+  if (busyStatuses.includes(slice.status) && !slice[LIVE_FLAG]) {
+    slice.status = 'idle';
+    // The stage belongs to a run that is no longer happening.
+    if (slice.stage) slice.stage = '';
+  }
 }
 
 export function ensureBrainState(project) {
@@ -169,6 +173,11 @@ export function ensureSimpleState(project) {
     error: '',
     errorCode: '',
     liveMessage: '',
+    // Which of the one button's four jobs is running, and what all four of them
+    // achieved. The stage drives the progress list; the report is what the panel
+    // shows afterwards instead of leaving the counts to a toast that has gone.
+    stage: '',
+    report: null,
     readback: null,
     fields: null,
     confidence: 0,

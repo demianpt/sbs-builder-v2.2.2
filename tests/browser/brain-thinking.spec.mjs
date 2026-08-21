@@ -40,6 +40,26 @@ async function stub(page, { delayMs = 0 } = {}) {
         queries: { images: 'golf course', videos: 'golf aerial' }, assets: [], slots, assignments: [], unassigned: [],
       });
     }
+    if (url.endsWith('/concepts')) {
+      return json({
+        source: 'ai', degraded: null, model: 'gemma4:31b', confidence: 0.9, missingFields: [],
+        readback: { business: 'A golf course.', audience: 'Visitors.', offer: 'Rounds.', goal: 'Book a tee time.', voice: 'Calm.' },
+        fields: { industry: 'A championship golf course in Surrey', audience: 'Visiting golfers', goal: 'Book a tee time', offer: 'Visitor rounds', tone: 'Calm', keywords: 'fairway', clientName: 'Fairwood Golf' },
+        concepts: [
+          { name: 'Course first', archetypeKey: 'A', preset: 'editorial', buttonStyle: 'solid-shift', dialOverrides: {}, why: 'Wide landscape.' },
+          { name: 'Members first', archetypeKey: 'C', preset: 'confident', buttonStyle: 'sweep-fill', dialOverrides: {}, why: 'Proof early.' },
+          { name: 'Bold', archetypeKey: 'F', preset: 'expressive', buttonStyle: 'pill-glow', dialOverrides: {}, why: 'Statement.' },
+        ],
+        flows: [{ id: 'B3', reason: 'Proof first.', fit: 0.9 }],
+      });
+    }
+    if (url.endsWith('/content')) {
+      const families = JSON.parse(route.request().postData()).families;
+      return json({
+        source: 'ai', degraded: null, model: 'gemma4:31b', families,
+        sections: families.map((family) => ({ family, pretitle: '', title: `Copy for ${family}`, subtitle: '', body: '', items: [], buttons: [] })),
+      });
+    }
     if (url.endsWith('/understand')) {
       return json({
         source: 'ai', degraded: null, model: 'gemma4:31b', archetypeName: 'Editorial',
@@ -122,7 +142,7 @@ test.describe('the working cue', () => {
   });
 });
 
-test.describe('imagery sits with the copywriter, at the top of the step', () => {
+test.describe('where the AI panels sit, and what they say while they work', () => {
   test('advanced builder', async ({ page }) => {
     await stub(page);
     await open(page, 3);
@@ -131,7 +151,7 @@ test.describe('imagery sits with the copywriter, at the top of the step', () => 
     await expect(first).toContainText('Find imagery for this brief');
   });
 
-  test('simple builder, directly beside "Fill the page with real copy"', async ({ page }) => {
+  test('simple builder, the imagery library is the first panel on the modules step', async ({ page }) => {
     await stub(page);
     await useAdvancedBuilder(page);
     await page.goto('/');
@@ -149,7 +169,41 @@ test.describe('imagery sits with the copywriter, at the top of the step', () => 
     }, BRIEF);
     await page.locator('[data-step="2"]').click();
 
+    // The copywriter panel used to sit above this one. Step 01's one button now
+    // writes and applies the copy, so this step is the imagery library and the
+    // modules, and nothing else.
     const headings = await page.locator('#editorInner section.brain-panel h2, #editorInner section.panel .panel-head h2').allInnerTexts();
-    expect(headings.slice(0, 2)).toEqual(['Fill the page with real copy', 'Find imagery for this brief']);
+    expect(headings[0]).toBe('Find imagery for this brief');
+    expect(headings).not.toContain('Fill the page with real copy');
+  });
+
+  /**
+   * Four jobs behind one press is most of a minute of waiting. Which one is
+   * running has to be on screen, or it reads as a hang.
+   */
+  test('the one button names the job it is on, and ticks off the ones it finished', async ({ page }) => {
+    await stub(page, { delayMs: 900 });
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForFunction(() => Boolean(window.__SBS_TEST_API));
+    await page.locator('#simple-brief').fill('A championship golf course in Surrey that needs visiting golfers to book a tee time online. Calm, precise and understated.');
+    await page.locator('[data-brain-action="build-concepts"]').click();
+
+    const stages = page.locator('.brain-stages li');
+    await expect(stages).toHaveCount(4);
+    await expect(stages.nth(0)).toHaveClass(/is-live/);
+    await expect(page.locator('[data-brain-action="build-concepts"]')).toContainText('Reading the brief');
+
+    // The copy is next, and the brief is now ticked rather than merely past.
+    await expect(stages.nth(1)).toHaveClass(/is-live/, { timeout: 15_000 });
+    await expect(stages.nth(0)).toHaveClass(/is-done/);
+    await expect(page.locator('[data-brain-action="build-concepts"]')).toContainText('Writing the copy');
+    await expect(stages.nth(2)).toHaveClass(/is-live/, { timeout: 15_000 });
+    await expect(page.locator('[data-brain-action="build-concepts"]')).toContainText('Finding imagery');
+
+    // And when it is over the list goes away and the counts take its place.
+    await expect(page.locator('.brain-stages')).toHaveCount(0, { timeout: 25_000 });
+    await expect(page.locator('.brain-report')).toContainText('concepts designed');
   });
 });

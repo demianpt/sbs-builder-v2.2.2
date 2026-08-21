@@ -729,7 +729,7 @@ setTimeout(updateDevice,100);
 (function(){
 'use strict';
 
-var SBS_BUILDER_VERSION='2.6.0';
+var SBS_BUILDER_VERSION='2.7.0';
 var legacySiteCssV1=siteCss;
 var legacyApplyArchetypeV1=applyArchetype;
 var legacyValidateProjectV1=validateProject;
@@ -4014,7 +4014,6 @@ function v4SimpleModules(){
   var editor=section?({content:renderContentEditor,media:renderMediaEditor,layout:renderLayoutEditor}[state.editorTab]||renderContentEditor)(section):'';
 
   return pageHead('03 · Modules','Shape the page.','Write the copy from your brief, reorder the sequence, then edit any module. Every choice here is safe: the structure stays a real registered DST composition.',section?familyLabels[section.family]||section.family:'No modules')+
-    v3BrainPanel(function(){return briefBrainFeature.renderSimpleContentPanel(v4SimpleContext())})+
     panel('Page sequence','<div id="moduleList" class="module-list">'+moduleRows()+'</div>'+
       '<button class="add-row" data-action="add-module" style="width:100%;margin-top:8px">+ Add a section</button>',
       'Drag to reorder · select to edit')+
@@ -6697,7 +6696,12 @@ v2EnsureProject(state.project);state.project.sections.forEach(function(s){ensure
   isolationDiff:conceptIsolationDiff,
   history:function(){return conceptHistory.report()},
   migration:conceptMigration
-},validate:validateProject,state:state};if(typeof briefBrainFeature.initBriefBrain==='function')briefBrainFeature.initBriefBrain(v3BrainContext());v4RenderModeChrome();renderAll();setTimeout(function(){updateDevice();renderPreview()},80);
+},validate:validateProject,
+// The selector the rendered-legibility audit measures. Exposed so its negative
+// control can sabotage exactly what the instrument looks at, rather than a
+// hand-copied list of elements that drifts away from it.
+legibilityTextSelector:V9_TEXT_SELECTOR,
+state:state};if(typeof briefBrainFeature.initBriefBrain==='function')briefBrainFeature.initBriefBrain(v3BrainContext());v4RenderModeChrome();renderAll();setTimeout(function(){updateDevice();renderPreview()},80);
 })();
 
 }

@@ -51,6 +51,26 @@ async function boot(page, device = 'mobile') {
     const toggle = frame.contentDocument?.querySelector('.sbs-menu-toggle');
     return toggle ? getComputedStyle(toggle).display !== 'none' : null;
   })).toBe(shouldShow);
+  await widthSettled(page);
+}
+
+/**
+ * Waits for the frame to actually be the width the device button asked for.
+ *
+ * The shell animates its width over 220ms, so everything measured inside the
+ * frame — whether the menu covers the viewport, how big the link type is — is
+ * measured against a width that is still moving. Under load that window is wide
+ * enough to fail on, which is the second half of this spec's standing flake.
+ */
+async function widthSettled(page) {
+  let last = -1;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const width = await page.locator('#sitePreview').evaluate((frame) => frame.contentWindow?.innerWidth || 0);
+    if (width && width === last) return width;
+    last = width;
+    await page.waitForTimeout(80);
+  }
+  return last;
 }
 
 async function useArchetype(page, key) {
@@ -292,6 +312,7 @@ test.describe('the mobile and tablet takeover', () => {
     await openMenu(page);
     await page.locator('.device-btn[data-device="tablet"]').click();
     await expect.poll(() => page.locator('#sitePreview').evaluate((frame) => frame.contentWindow.innerWidth)).toBe(820);
+    await widthSettled(page);
     await openMenu(page);
     await expect.poll(() => menuState(page).then((state) => state.open)).toBe(true);
     const tablet = await menuState(page);

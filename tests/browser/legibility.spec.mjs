@@ -71,29 +71,91 @@ test.describe('every band can be read', () => {
     expect(result.sections.length).toBeGreaterThan(0);
   });
 
+  /**
+   * The negative control: is the instrument blind?
+   *
+   * Four tests above say every band in every archetype can be read. That claim
+   * is worth nothing unless this one fails when a band cannot be, and for two
+   * releases it did not — it tried to force the failure through the project
+   * model, and the model kept defending itself. Palette repair put the ink back;
+   * the derived tokens read text colour off the ground rather than from the ink;
+   * every band with a photograph behind it inverts its copy and is excluded
+   * anyway. All of that is the product being right, and none of it leaves a way
+   * to express "unreadable" in the model.
+   *
+   * So the sabotage is applied where the audit actually looks: the rendered
+   * page. One band's copy is painted the exact colour of the ground behind it —
+   * which is the failure this check exists for, however it came about — and the
+   * audit has to name that band and no other.
+   */
   test('catches a band that really is unreadable', async ({ page }) => {
     await boot(page);
     await buildPage(page, 'A');
-    await legibility(page);
-    // Paint one band's own text almost exactly its own ground, the way a bad
-    // pattern default or a hand edit would.
-    await page.evaluate(() => {
+    const clean = await legibility(page);
+    expect(clean.failures, 'the page was not legible before the sabotage').toEqual([]);
+
+    const sabotaged = await page.evaluate(() => {
       const api = window.__SBS_TEST_API;
-      const design = api.state.project.design;
-      design.paletteLocked = true;
-      design.palette.ink = design.palette.bg;
-      api.state.project.sections.forEach((section) => api.state.project.sections.indexOf(section));
-      document.querySelector('#editorInner [data-bind]')?.dispatchEvent(new Event('input', { bubbles: true }));
+      const frame = document.getElementById('sitePreview');
+      const doc = frame.contentDocument;
+      const view = frame.contentWindow;
+      const target = api.auditDocument(doc).legibility.sections[0];
+      const band = doc.getElementById(target.id);
+
+      /*
+       * Each line painted the colour of *its own* ground, not the band's.
+       *
+       * One colour for the whole band does not work: a slider's card sits on its
+       * own opaque panel, so painting its title the colour of the band behind the
+       * panel makes that line more readable, not less. The walk below is the
+       * audit's own — the first opaque thing behind this element — and the
+       * selector is the audit's own too, so what is sabotaged is exactly what is
+       * measured.
+       */
+      const groundOf = (element) => {
+        let node = element;
+        while (node) {
+          if (/url\(/i.test(view.getComputedStyle(node).backgroundImage || '')) return '';
+          const parts = (view.getComputedStyle(node).backgroundColor.match(/[\d.]+/g) || []).map(Number);
+          if (parts.length >= 3 && (parts.length < 4 || parts[3] > 0.85)) return `rgb(${parts[0]},${parts[1]},${parts[2]})`;
+          node = node.parentElement;
+        }
+        return '';
+      };
+      let painted = 0;
+      let ground = '';
+      band.querySelectorAll(api.legibilityTextSelector).forEach((element) => {
+        const behind = groundOf(element);
+        if (!behind) return;
+        element.style.setProperty('color', behind, 'important');
+        ground = behind;
+        painted += 1;
+      });
+
+      // Re-audited and stored the way `renderPreview` stores it, so the preflight
+      // check is reading the same measurement.
+      const audit = api.auditDocument(doc);
+      api.state.previewAudit = audit;
+      return { id: target.id, was: target.ratio, target: target.target, ground, painted, legibility: audit.legibility };
     });
-    await expect.poll(async () => (await legibility(page)).failures.length, { timeout: 15_000 }).toBeGreaterThan(0);
+
+    expect(sabotaged.painted, 'no copy in the band could be painted').toBeGreaterThan(0);
+    expect(sabotaged.ground, 'no opaque ground was found behind the copy').toMatch(/^rgb\(/);
+    expect(sabotaged.was, 'the band chosen for sabotage was already failing').toBeGreaterThanOrEqual(sabotaged.target);
+    // Exactly the band that was sabotaged, and nothing else.
+    expect(sabotaged.legibility.failures.map((entry) => entry.id)).toEqual([sabotaged.id]);
+    const failure = sabotaged.legibility.failures[0];
+    expect(failure.ratio).toBeLessThan(1.1);
+    expect(failure.sample.length).toBeGreaterThan(0);
+
+    // And the preflight gate says so, in words, with the band and the number.
     const checks = await page.evaluate(() => window.__SBS_TEST_API.validate().checks);
     const rendered = checks.find((check) => check.code === 'RENDER-CONTRAST');
     expect(rendered.status).toBe('fail');
     expect(rendered.detail).toMatch(/:1/);
+    expect(rendered.detail).toContain(failure.sample.slice(0, 12));
   });
-});
 
-test.describe('the palette the brief asked for', () => {
   test('a stated colour survives every archetype, and the page stays readable', async ({ page }) => {
     await boot(page);
     await page.evaluate(() => {

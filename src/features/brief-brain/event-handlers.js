@@ -103,17 +103,41 @@ function currentFamilies(context) {
     .filter((family) => SECTION_FAMILY_IDS.includes(family));
 }
 
+/**
+ * The copywriting call, and optionally putting it on the page.
+ *
+ * Two callers with two different promises share it. The advanced builder writes
+ * a draft and shows it for review, because overwriting hand-edited copy without
+ * asking is exactly what its extra step exists to prevent. The simple builder's
+ * one button applies it, because there is nothing yet to overwrite and a second
+ * button to confirm the obvious is a step for its own sake.
+ *
+ * Reporting belongs to the caller: one of them owns a panel with a spinner on
+ * it, the other is one stage of three.
+ */
+async function contentPass(context, { apply = false } = {}) {
+  const families = currentFamilies(context);
+  if (!families.length) return { skipped: 'the page has no sections to write for' };
+  const result = await briefBrainApi.content(buildContentRequest({ project: context.project, families }));
+  const brain = ensureBrainState(context.project);
+  brain.contentDraft = result;
+  if (apply) {
+    context.applyContentDraft(result);
+    brain.contentAppliedAt = new Date().toISOString();
+  }
+  return { result, written: (result.sections || []).length };
+}
+
 async function runContent(brain, context) {
   if (isBrainBusy(brain)) return;
-  const families = currentFamilies(context);
-  if (!families.length) {
-    context.announce('Choose a page flow first, then generate the content.');
-    return;
-  }
   setBusy(brain, 'writing', 'Writing the first draft of every section…', context);
   try {
-    const result = await briefBrainApi.content(buildContentRequest({ project: context.project, families }));
-    brain.contentDraft = result;
+    const pass = await contentPass(context);
+    if (pass.skipped) {
+      settle(brain, 'Choose a page flow first, then generate the content.', context);
+      return;
+    }
+    const result = pass.result;
     settle(brain, result.degraded
       ? result.degraded.message
       : `Draft ready for ${result.sections.length} section${result.sections.length === 1 ? '' : 's'}. Review it, then apply.`, context);
@@ -154,14 +178,55 @@ async function runOutline(brain, context) {
  * owns the request and the resulting project slice; applying the plan to the
  * sections is delegated back so undo, autosave and the preview keep one owner.
  */
+async function mediaPass(context) {
+  // Only an explicit "no" skips: the flag is null until the status probe answers,
+  // and a probe that has not landed yet is not a reason to refuse to search.
+  const stock = ensureBrainState(context.project).provider?.stock || {};
+  if (stock.configured === false) return { skipped: 'stock imagery is not configured on this server' };
+  const slots = context.mediaSlots();
+  if (!slots.length) return { skipped: 'this page has no picture slots yet' };
+  const result = await briefBrainApi.media(buildMediaRequest({ project: context.project, slots }));
+  // Re-read after the await: a render may have run while the search was open.
+  const next = ensureMediaState(context.project);
+  next.status = 'ready';
+  next.assets = result.assets || [];
+  next.assignments = result.assignments || [];
+  next.unassigned = result.unassigned || [];
+  next.queries = result.queries || null;
+  next.source = result.source || '';
+  next.degraded = result.degraded || null;
+  next.provider = result.provider || '';
+  next.model = result.model || '';
+  next.notice = result.notice || '';
+  next.generatedAt = new Date().toISOString();
+  next.generatedFrom = briefSignature(context.project.brief);
+  context.applyMediaPlan({ assets: next.assets, assignments: next.assignments });
+  const videos = next.assets.filter((asset) => asset.kind === 'video').length;
+  const short = next.unassigned.length
+    ? ` ${next.unassigned.length} slot${next.unassigned.length === 1 ? '' : 's'} kept the placeholder — the search did not return enough distinct assets to fill them without repeating one.`
+    : '';
+  return {
+    placed: next.assignments.length,
+    found: next.assets.length,
+    unassigned: next.unassigned.length,
+    videos,
+    message: result.degraded
+      ? `${result.degraded.message} Imagery was placed in slot order.${short}`
+      : `${next.assets.length} previews found (${videos} video${videos === 1 ? '' : 's'}) and ${next.assignments.length} placed.${short}`,
+  };
+}
+
+/**
+ * Finds on-brief stock imagery and places it across the page.
+ *
+ * The builder owns the slot list, because only it knows which pattern is on each
+ * section and therefore how many pictures that section can hold. This handler
+ * owns the request and the resulting project slice; applying the plan to the
+ * sections is delegated back so undo, autosave and the preview keep one owner.
+ */
 async function runMedia(context) {
   const media = ensureMediaState(context.project);
   if (isMediaBusy(media)) return;
-  const slots = context.mediaSlots();
-  if (!slots.length) {
-    context.announce('This page has no picture slots yet. Add a section that carries an image first.');
-    return;
-  }
   beginJob(media);
   media.status = 'searching';
   media.error = '';
@@ -169,33 +234,21 @@ async function runMedia(context) {
   media.liveMessage = 'Searching the stock library for this brief…';
   context.renderAll();
   try {
-    const result = await briefBrainApi.media(buildMediaRequest({ project: context.project, slots }));
+    const pass = await mediaPass(context);
     const next = endJob(ensureMediaState(context.project));
-    next.status = 'ready';
-    next.assets = result.assets || [];
-    next.assignments = result.assignments || [];
-    next.unassigned = result.unassigned || [];
-    next.queries = result.queries || null;
-    next.source = result.source || '';
-    next.degraded = result.degraded || null;
-    next.provider = result.provider || '';
-    next.model = result.model || '';
-    next.notice = result.notice || '';
-    next.generatedAt = new Date().toISOString();
-    next.generatedFrom = briefSignature(context.project.brief);
-    context.applyMediaPlan({ assets: next.assets, assignments: next.assignments });
-    const videos = next.assets.filter((asset) => asset.kind === 'video').length;
-    const placed = next.assignments.length;
-    const short = next.unassigned.length
-      ? ` ${next.unassigned.length} slot${next.unassigned.length === 1 ? '' : 's'} kept the placeholder — the search did not return enough distinct assets to fill them without repeating one.`
-      : '';
-    const message = result.degraded
-      ? `${result.degraded.message} Imagery was placed in slot order.${short}`
-      : `${next.assets.length} previews found (${videos} video${videos === 1 ? '' : 's'}) and ${placed} placed.${short}`;
-    next.liveMessage = message;
+    if (pass.skipped) {
+      next.status = 'idle';
+      next.liveMessage = '';
+      context.renderAll();
+      context.announce(pass.skipped === 'this page has no picture slots yet'
+        ? 'This page has no picture slots yet. Add a section that carries an image first.'
+        : 'Stock imagery is not configured on this server.');
+      return;
+    }
+    next.liveMessage = pass.message;
     context.queueSave();
     context.renderAll();
-    context.announce(message);
+    context.announce(pass.message);
   } catch (error) {
     const next = endJob(ensureMediaState(context.project));
     const normalized = normalizeApiError(error);
@@ -265,11 +318,30 @@ async function runMediaAsset(context) {
  * ---------------------------------------------------------------- */
 
 /**
- * Reads one paragraph and builds three concepts plus the five best flows.
+ * The one button: read the brief, write the page, find the pictures.
  *
- * The concepts are stored but not applied: choosing one is the strategist's
- * decision and the step's exit condition, so nothing changes the preview until
- * they pick.
+ * This used to be three buttons on three steps, and the middle one needed a
+ * fourth press to actually apply what it had written. Everything it does is
+ * something that has to happen before a page can be shown to anybody, and none
+ * of it is a decision — so it is one press.
+ *
+ * The order is the interesting part, and it is not the order the buttons were in:
+ *
+ *   1. read the brief — the readback, the fields, the three concept designs;
+ *   2. write the copy and put it on the page;
+ *   3. find the imagery and place it;
+ *   4. *then* fork the page into V1, V2 and V3.
+ *
+ * Forking last is what makes the three concepts comparable. The workspaces are
+ * clones of the page as it stands, so dressing the page first means all three
+ * carry the real copy and the real pictures and differ only in design — which is
+ * the entire point of showing a client three of them. Generating them first, as
+ * the old flow did, left the copy in whichever one happened to be active.
+ *
+ * Stages two and three are best-effort by design. A brief that produced three
+ * concepts is worth keeping even if the copywriter timed out, and stock imagery
+ * is a separately configured service that most servers do not have — neither is
+ * a reason to throw away the concepts, and both say what happened.
  */
 async function runConcepts(context) {
   const simple = ensureSimpleState(context.project);
@@ -279,27 +351,87 @@ async function runConcepts(context) {
     context.announce('Write a few sentences about the project first.');
     return;
   }
+  const stage = (name, message) => {
+    const slice = ensureSimpleState(context.project);
+    slice.stage = name;
+    slice.liveMessage = message;
+    context.renderAll();
+  };
   beginJob(simple);
   simple.status = 'reading';
   simple.error = '';
   simple.errorCode = '';
-  simple.liveMessage = 'Reading the brief and building three concepts…';
-  context.renderAll();
+  simple.report = null;
+  stage('brief', 'Reading the brief and designing three concepts…');
   try {
     const result = await briefBrainApi.concepts(buildConceptsRequest({
       project: context.project,
       archetypes: context.archetypes,
       flows: context.flows,
     }));
-    const next = endJob(ensureSimpleState(context.project));
+    const next = ensureSimpleState(context.project);
     const previousActive = next.active;
     const previousSlot = previousActive !== null ? next.concepts[previousActive]?.slot : null;
-    next.status = 'ready';
     next.readback = result.readback;
     next.fields = result.fields;
     next.confidence = result.confidence;
     next.missingFields = result.missingFields || [];
     next.concepts = context.normalizeConcepts(result.concepts);
+    next.flows = result.flows || [];
+    next.source = result.source;
+    next.directives = result.directives || null;
+    next.degraded = result.degraded || null;
+    next.model = result.model || '';
+    next.generatedAt = new Date().toISOString();
+    next.generatedFrom = briefText;
+    // The brief text is also the advanced builder's brief, so mirror the fields
+    // across now rather than at export time — and before the copywriter runs,
+    // since that is the brief it writes from.
+    context.applyBriefFields(result.fields, { briefText });
+
+    /* --- Stage two: the copy --- */
+    const report = { concepts: next.concepts.length, written: 0, placed: 0, notes: [] };
+    stage('content', 'Writing the copy for every section…');
+    try {
+      const pass = await contentPass(context, { apply: true });
+      if (pass.skipped) report.notes.push(`No copy was written: ${pass.skipped}.`);
+      else {
+        report.written = pass.written;
+        if (pass.result.degraded) report.notes.push(pass.result.degraded.message);
+      }
+    } catch (error) {
+      report.notes.push(`The copywriter could not be reached: ${normalizeApiError(error).message}`);
+    }
+
+    /* --- Stage three: the pictures --- */
+    stage('media', 'Finding imagery for this brief…');
+    try {
+      const pass = await mediaPass(context);
+      if (pass.skipped) report.notes.push(`No imagery was placed: ${pass.skipped}.`);
+      else {
+        report.placed = pass.placed;
+        report.found = pass.found;
+        report.videos = pass.videos;
+        // Finding more previews than there are slots is the normal case, not a
+        // warning. A slot left on a placeholder is the thing worth saying.
+        if (pass.unassigned) {
+          report.notes.push(`${pass.unassigned} slot${pass.unassigned === 1 ? '' : 's'} kept a placeholder rather than repeat a picture.`);
+        }
+      }
+    } catch (error) {
+      const normalized = normalizeApiError(error);
+      const media = ensureMediaState(context.project);
+      media.status = 'error';
+      media.error = normalized.message;
+      media.errorCode = normalized.code;
+      report.notes.push(`No imagery was placed: ${normalized.message}`);
+    }
+
+    /* --- Stage four: fork the dressed page into three workspaces --- */
+    stage('concepts', 'Building the three concept workspaces…');
+    const settled = endJob(ensureSimpleState(context.project));
+    settled.status = 'ready';
+    settled.stage = '';
     /*
      * Three concepts are three real workspaces from here on. The builder clones
      * the concept currently being edited into all three slots — same content,
@@ -310,29 +442,25 @@ async function runConcepts(context) {
      * over work already done in V2 or V3 is never something to do silently.
      */
     const generatedConcepts = typeof context.generateConcepts === 'function'
-      ? context.generateConcepts(next.concepts)
+      ? context.generateConcepts(settled.concepts)
       : [];
-    next.flows = result.flows || [];
-    next.source = result.source;
-    next.directives = result.directives || null;
-    next.degraded = result.degraded || null;
-    next.model = result.model || '';
-    next.generatedAt = new Date().toISOString();
-    next.generatedFrom = briefText;
     // Re-reading a brief should not silently abandon the concept already on
     // screen: keep the same slot selected and re-apply it.
-    const sameSlot = previousSlot ? next.concepts.findIndex((concept) => concept.slot === previousSlot) : -1;
-    next.active = sameSlot >= 0 ? sameSlot : null;
-    // The brief text is also the advanced builder's brief, so mirror the fields
-    // across now rather than at export time.
-    context.applyBriefFields(result.fields, { briefText });
-    if (next.active !== null) context.applyConcept(next.active, { silent: true });
-    const message = result.degraded
-      ? result.degraded.message
-      : generatedConcepts.length
-        ? `${next.concepts.length} concepts ready. Pick one to continue.`
-        : `${next.concepts.length} concepts re-read. Your existing V1/V2/V3 workspaces were kept — reset a concept to take its new design.`;
-    next.liveMessage = message;
+    const sameSlot = previousSlot ? settled.concepts.findIndex((concept) => concept.slot === previousSlot) : -1;
+    settled.active = sameSlot >= 0 ? sameSlot : null;
+    if (settled.active !== null) context.applyConcept(settled.active, { silent: true });
+    if (!generatedConcepts.length) {
+      report.notes.push('Your existing V1/V2/V3 workspaces were kept — reset a concept to take its new design.');
+    }
+    settled.report = report;
+
+    const done = [
+      `${report.concepts} concepts`,
+      report.written ? `${report.written} sections written` : '',
+      report.placed ? `${report.placed} pictures placed` : '',
+    ].filter(Boolean).join(', ');
+    const message = result.degraded ? result.degraded.message : `${done}. Pick a concept to continue.`;
+    settled.liveMessage = message;
     context.queueSave();
     context.renderAll();
     context.announce(message);
@@ -340,6 +468,7 @@ async function runConcepts(context) {
     const next = endJob(ensureSimpleState(context.project));
     const normalized = normalizeApiError(error);
     next.status = 'error';
+    next.stage = '';
     next.error = normalized.message;
     next.errorCode = normalized.code;
     next.liveMessage = normalized.message;

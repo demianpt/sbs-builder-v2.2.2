@@ -1,6 +1,6 @@
 import './brief-brain.css';
 
-export { assetPurchaseUrl, renderBriefBrainPanel, renderFlowBrainPanel, renderMediaPanel, renderSimpleBriefPanel, renderSimpleContentPanel, renderSimpleFlowPanel } from './panels.js';
+export { assetPurchaseUrl, renderBriefBrainPanel, renderFlowBrainPanel, renderMediaPanel, renderSimpleBriefPanel, renderSimpleFlowPanel } from './panels.js';
 export { expandBriefForImport, handleBriefBrainEvent, initBriefBrain } from './event-handlers.js';
 export {
   BRAIN_SCHEMA_VERSION,

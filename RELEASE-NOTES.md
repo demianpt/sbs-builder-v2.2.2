@@ -1,5 +1,71 @@
 # Release notes
 
+## 2.7.0 — One button
+
+"Read my brief and build 3 concepts" was three buttons on three steps, and the
+middle one needed a fourth press before anything it wrote reached the page:
+
+1. Step 01 — read the brief, get three concepts.
+2. Step 01 or 03 — write the page copy. *Then press Apply.*
+3. Step 03 — find the imagery.
+
+Not one of those presses was a decision. Every one of them had to happen before
+a page could be shown to anybody, and the draft nobody reads before applying is
+a confirmation dialog with extra steps. So it is one press, and it does all of
+it:
+
+**Read my brief and build 3 concepts** → designs three concepts · writes the copy
+for every section and puts it on the page · finds the imagery and places it.
+
+### The order changed, and that is the point
+
+The old flow generated the three concept workspaces first and dressed the page
+afterwards — which left the copy and the pictures in whichever workspace happened
+to be open. The new order dresses the page and forks it last:
+
+1. read the brief — the readback, the fields, the three concept designs;
+2. write the copy and put it on the page;
+3. find the imagery and place it;
+4. **then** clone that page into V1, V2 and V3, each resolving its own design.
+
+Now all three concepts carry the same real copy and the same real pictures and
+differ only in design, which is the entire reason to show a client three of them.
+
+### Two of the four jobs are allowed to fail
+
+A brief that produced three concepts is worth keeping even when the copywriter
+times out, and stock imagery is a separately configured service that many servers
+do not have. Neither is a reason to throw away the rest, so both are best-effort
+and both say what happened. The panel shows the counts when it is done —
+"3 concepts designed · 6 sections written and applied · 6 pictures found and
+placed" — and any note underneath: the copywriter unreachable, stock not
+configured, a slot that kept its placeholder rather than repeat a picture.
+
+### It says which job it is on
+
+Four jobs behind one press is most of a minute of waiting, and a button that just
+sits there reads as a hang. The press names the stage it is in and ticks off the
+ones it finished.
+
+### What went away
+
+- The **"Write the page copy" / "Apply this content"** pair in the simple builder
+  — both presses, on Step 01 *and* Step 03. The `renderSimpleContentPanel` panel
+  and the copywriter block are deleted, not hidden.
+- Step 03's imagery panel is now the **library** rather than a step: it says
+  Step 01 already searched, and its button is a re-run for a different set.
+
+The advanced builder is deliberately untouched. Its write-then-review-then-apply
+sequence is the reason it exists: it is used on pages that already have
+hand-written copy, where overwriting without reading the draft first is the whole
+risk. One model, one set of jobs, two front doors with different promises.
+
+Measured against the real thing — a ten-page client PDF dropped on Step 01, then
+one press: three concepts designed, six sections written and applied ("Ride the
+Grand Canyon in Style", "More Than Just a Rental", "From Booking to Open Road"),
+twelve previews found and six placed, and all three concepts carrying the same
+page.
+
 ## 2.6.0 — The brief arrives as a file, and the pictures arrive by hand
 
 ### The client's own brief, dropped straight in

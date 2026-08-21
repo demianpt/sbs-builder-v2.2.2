@@ -34,6 +34,38 @@
 
 .brain-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}
 .brain-hint{font-size:10px;line-height:1.55;color:var(--ui-muted);margin:8px 0 0}
+
+/* ------------------------------------------------------------------ *
+ * The one button's four jobs
+ *
+ * Reading the brief, writing the copy, finding the imagery and forking the
+ * three workspaces take most of a minute between them. Without a list saying
+ * which one is running, that reads as a hang; without the counts afterwards,
+ * there is nothing on screen to say what actually landed.
+ * ------------------------------------------------------------------ */
+.brain-stages{list-style:none;display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 12px;padding:0}
+.brain-stages li{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 10px 5px 6px;border:1px solid #e4e1da;border-radius:99px;
+  font-size:10px;color:var(--ui-muted);background:#fbfaf7;
+}
+.brain-stages i{
+  width:15px;height:15px;flex:0 0 15px;display:grid;place-items:center;
+  border-radius:50%;background:#e7e4dd;color:#8b8781;
+  font:500 8px/1 DM Mono,monospace;font-style:normal;
+}
+.brain-stages li.is-done{color:var(--ui-ink)}
+.brain-stages li.is-done i{background:var(--ui-green,#4a7d54);color:#fff}
+.brain-stages li.is-live{border-color:var(--ui-accent);color:var(--ui-ink);background:#fdf5f2}
+.brain-stages li.is-live i{background:var(--ui-accent);color:#fff;animation:brain-stage-pulse 1.1s ease-in-out infinite}
+@keyframes brain-stage-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media(prefers-reduced-motion:reduce){.brain-stages li.is-live i{animation:none}}
+
+.brain-report{margin:10px 0 4px;padding:11px 13px;background:#f6f4ef;border-left:2px solid var(--ui-green,#4a7d54)}
+.brain-report ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.brain-report li{font-size:11px;line-height:1.5;display:flex;gap:7px}
+.brain-report li:before{content:"✓";color:var(--ui-green,#4a7d54);font-size:10px}
+.brain-report .brain-hint{margin-top:7px}
 .brain-hint.is-warn{color:var(--ui-yellow);background:#fff9ee;border-left:2px solid var(--ui-yellow);padding:8px 10px}
 .brain-error{font-size:10px;line-height:1.5;color:var(--ui-red);background:#fdf1ef;border-left:2px solid var(--ui-red);padding:9px 11px;margin:0 0 12px}
 .brain-subhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:20px 0 10px;padding-top:16px;border-top:1px solid #ece9e3}

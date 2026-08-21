@@ -271,6 +271,24 @@ Three rules hold across every Brief Brain job:
    slow or off-contract, the planner answers and the UI labels the result as
    coming from the built-in planner rather than the model.
 
+### One button, in the simple builder
+
+**Read my brief and build 3 concepts** runs four jobs in one press: it designs
+the three concepts, writes the copy for every section and puts it on the page,
+finds the imagery and places it, and only then clones the finished page into V1,
+V2 and V3 so each resolves its own design. Forking last is what makes the three
+comparable — all three carry the same real copy and pictures and differ only in
+design.
+
+The copy and the imagery jobs are best-effort: a brief that produced concepts is
+kept even when the copywriter times out, and stock imagery is separately
+configured and often absent. The panel reports the counts it achieved and names
+anything it could not do.
+
+The advanced builder keeps its separate write → review → apply sequence. That
+review step is the reason it exists: it runs on pages that already carry
+hand-written copy.
+
 The Simple builder exposes those same nine Design Dials directly, so strategists can make global changes without switching to Advanced.
 
 A concept names a *quick style* and may nudge individual dials from there, rather

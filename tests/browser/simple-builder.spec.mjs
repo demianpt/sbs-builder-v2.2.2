@@ -53,7 +53,32 @@ async function stubBrain(page, overrides = {}) {
   await page.route('**/api/brief/**', async (route) => {
     const url = route.request().url();
     const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    if (url.endsWith('/status')) return json({ provider: 'ollama', model: 'gemma4:31b', configured: true, available: true, modelAvailable: true });
+    if (url.endsWith('/status')) {
+      return json({
+        provider: 'ollama', model: 'gemma4:31b', configured: true, available: true, modelAvailable: true,
+        // Stock imagery is a separately configured service, and most servers do
+        // not have it. Off by default here for the same reason.
+        media: { provider: 'shutterstock', configured: Boolean(overrides.stock), available: Boolean(overrides.stock), images: 10, videos: 2 },
+      });
+    }
+    if (url.endsWith('/media')) {
+      if (overrides.mediaError) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: overrides.mediaError }) });
+      const { slots } = JSON.parse(route.request().postData());
+      const assets = slots.map((slot, index) => ({
+        id: `ss-${index + 1}`, assetId: String(2_000 + index), kind: 'image', provider: 'shutterstock',
+        src: `https://stock.test/ss-${index + 1}.jpg`, thumb: `https://stock.test/ss-${index + 1}-thumb.jpg`,
+        alt: `picture ${index + 1} of the practice`, width: 1500, height: 1000, aspect: 1.5,
+        url: `https://www.shutterstock.com/ss-${index + 1}`,
+      }));
+      return json({
+        source: 'ai', degraded: null, model: 'gemma4:31b', provider: 'shutterstock', licence: 'preview',
+        notice: 'Watermarked Shutterstock preview for client review.',
+        queries: { images: 'dental practice interior', videos: '' },
+        assets,
+        assignments: slots.map((slot, index) => ({ slotKey: slot.key, assetId: `ss-${index + 1}`, kind: 'image', reason: 'matches the section' })),
+        unassigned: [],
+      });
+    }
     if (url.endsWith('/concepts')) {
       if (overrides.conceptsError) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: overrides.conceptsError }) });
       return json({ ...CONCEPT_SET, ...overrides.concepts });
@@ -61,6 +86,7 @@ async function stubBrain(page, overrides = {}) {
     if (url.endsWith('/expand')) return json({ source: 'ai', model: 'gemma4:31b', briefText: BRIEF_TEXT, ...CONCEPT_SET.fields, projectName: 'Harbour Dental', notes: '' });
     if (url.endsWith('/outline')) return json({ source: 'ai', model: 'gemma4:31b', name: 'Typed', rationale: 'r', steps: [{ requested: 'Hero', family: 'hero', reason: 'r' }, { requested: 'Pricing', family: 'pricing', reason: 'r' }], added: [], unresolved: [] });
     if (url.endsWith('/content')) {
+      if (overrides.contentError) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: overrides.contentError }) });
       const families = JSON.parse(route.request().postData()).families;
       return json({
         source: 'ai', degraded: null, model: 'gemma4:31b', families,
@@ -345,6 +371,131 @@ test.describe('simple builder · Step 01 Brief and Direction', () => {
   });
 });
 
+/**
+ * One press, four jobs.
+ *
+ * This used to be three buttons on three steps, and the middle one needed a
+ * fourth press before anything it wrote reached the page. None of those presses
+ * was a decision — every one of them had to happen before a page could be shown
+ * to anybody — so they are one press now.
+ */
+test.describe('simple builder · one button does the whole first pass', () => {
+  test('writes the copy and puts it on the page, with no second press', async ({ page }) => {
+    await stubBrain(page);
+    const before = await (async () => {
+      await enterSimple(page);
+      return page.evaluate(() => window.__SBS_TEST_API.state.project.sections.map((section) => section.content.title));
+    })();
+    await page.locator('#simple-brief').fill(BRIEF_TEXT);
+    await page.locator('[data-brain-action="build-concepts"]').click();
+    await expect(page.locator('.concept-card')).toHaveCount(3);
+
+    const after = await page.evaluate(() => window.__SBS_TEST_API.state.project.sections.map((section) => section.content.title));
+    expect(after).not.toEqual(before);
+    expect(after.every((title) => title.startsWith('Copy for '))).toBe(true);
+    // Nowhere in the simple builder is there anything left to press for this.
+    await expect(page.locator('[data-brain-action="write-content"]')).toHaveCount(0);
+    await expect(page.locator('[data-brain-action="apply-content"]')).toHaveCount(0);
+  });
+
+  test('finds the imagery and places it, in the same press', async ({ page }) => {
+    await stubBrain(page, { stock: true });
+    await buildConcepts(page);
+
+    const placed = await page.evaluate(() => {
+      const api = window.__SBS_TEST_API;
+      const slots = api.media.slots();
+      const media = (section, slot) => {
+        const content = section.content || {};
+        if (slot.role === 'card') return (content.items || [])[slot.index]?.media || null;
+        const hasBanner = section.node && section.node.component === 'ds-blocks/dst-banner';
+        const at = slot.role === 'background' ? 0 : (hasBanner ? slot.index + 1 : slot.index);
+        return (content.media || [])[at] || null;
+      };
+      return slots.map((slot) => {
+        const section = api.state.project.sections.find((entry) => entry.id === slot.sectionId);
+        const asset = media(section, slot);
+        return asset ? asset.provider : 'empty';
+      });
+    });
+    expect(placed.length).toBeGreaterThan(3);
+    expect(placed.every((provider) => provider === 'shutterstock')).toBe(true);
+    // And the imagery panel is a library from here, not a step to remember.
+    await conceptPill(page, 'v1').click();
+    await page.locator('.nav-btn.next').click();
+    await page.locator('.nav-btn.next').click();
+    await expect(page.locator('#editorInner')).toContainText("Step 01's button already searched");
+  });
+
+  test('all three concepts carry the copy and the pictures, not just the open one', async ({ page }) => {
+    await stubBrain(page, { stock: true });
+    await buildConcepts(page);
+    // The reason the page is dressed *before* the workspaces are forked: three
+    // concepts are for comparing design, so all three have to be the same page.
+    const perConcept = await page.evaluate(() => {
+      const api = window.__SBS_TEST_API;
+      return api.concepts.generated().map((concept) => ({
+        slot: concept.slot,
+        titles: concept.sections.map((section) => section.content.title),
+        pictures: concept.sections.filter((section) => (section.content.media || []).some((media) => media && media.provider === 'shutterstock')).length,
+      }));
+    });
+    expect(perConcept).toHaveLength(3);
+    for (const concept of perConcept) {
+      expect(concept.titles.every((title) => title.startsWith('Copy for ')), `${concept.slot} copy`).toBe(true);
+      expect(concept.pictures, `${concept.slot} pictures`).toBeGreaterThan(0);
+    }
+  });
+
+  test('says what it did, in counts, on the panel', async ({ page }) => {
+    await stubBrain(page, { stock: true });
+    await buildConcepts(page);
+    const report = page.locator('.brain-report');
+    await expect(report).toContainText('3 concepts designed');
+    await expect(report).toContainText('sections written and applied');
+    await expect(report).toContainText('pictures found and placed');
+  });
+
+  test('says what it could not do, without pretending it worked', async ({ page }) => {
+    // No stock credentials is the ordinary case, not an error: the concepts and
+    // the copy still land, and the panel says why there are no pictures.
+    await stubBrain(page);
+    await buildConcepts(page);
+    const report = page.locator('.brain-report');
+    await expect(report).toContainText('3 concepts designed');
+    await expect(report).toContainText('sections written and applied');
+    await expect(report).toContainText('stock imagery is not configured');
+    await expect(report).not.toContainText('pictures found');
+  });
+
+  test('keeps the concepts when the copywriter cannot be reached', async ({ page }) => {
+    await stubBrain(page, { contentError: { code: 'PROVIDER_UNAVAILABLE', message: 'The model is unavailable.' } });
+    await enterSimple(page);
+    const before = await page.evaluate(() => window.__SBS_TEST_API.state.project.sections.map((section) => section.content.title));
+    await page.locator('#simple-brief').fill(BRIEF_TEXT);
+    await page.locator('[data-brain-action="build-concepts"]').click();
+
+    // A brief that produced three concepts is worth keeping.
+    await expect(page.locator('.concept-card')).toHaveCount(3);
+    await expect(page.locator('.brain-report')).toContainText('copywriter could not be reached');
+    expect(await page.evaluate(() => window.__SBS_TEST_API.state.project.sections.map((section) => section.content.title))).toEqual(before);
+    expect(await page.evaluate(() => window.__SBS_TEST_API.simple.ensure().status)).toBe('ready');
+  });
+
+  test('reading the brief again re-runs all of it', async ({ page }) => {
+    await stubBrain(page, { stock: true });
+    await buildConcepts(page);
+    await conceptPill(page, 'v2').click();
+    await page.evaluate(() => {
+      window.__SBS_TEST_API.state.project.sections[0].content.title = 'Edited by hand';
+    });
+    await page.locator('[data-brain-action="build-concepts"]').click();
+    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.sections[0].content.title)).toBe('Copy for hero');
+    // The concept that was open stays open.
+    expect(await page.evaluate(() => window.__SBS_TEST_API.concepts.activeId())).toBe('v2');
+  });
+});
+
 test.describe('the V1/V2/V3 pills', () => {
   test('appear over the preview and follow you through every step', async ({ page }) => {
     await stubBrain(page);
@@ -589,19 +740,17 @@ test.describe('simple builder · Step 03 Modules', () => {
     await expect(page.locator('#editorInner')).not.toContainText('DST tree');
   });
 
-  test('offers one button that fills the page with copy from the brief', async ({ page }) => {
+  test('the copy is already written, and there is no second button to press', async ({ page }) => {
     await openModules(page);
-    // Showing a client three concepts carrying the demo project's copy would
-    // defeat the whole exercise, so the copywriter lives on this step.
-    await expect(page.locator('[data-brain-action="write-content"]')).toHaveCount(1);
-    const before = await page.evaluate(() => window.__SBS_TEST_API.state.project.sections.map((section) => section.content.title));
-    await page.locator('[data-brain-action="write-content"]').click();
-    await expect(page.locator('.brain-draft ol > li')).toHaveCount(before.length);
-    await page.locator('[data-brain-action="apply-content"]').click();
-    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.sections[0].content.title)).toBe('Copy for hero');
-    // One undo returns the whole page, and the flow is untouched.
-    await page.locator('#undoBtn').click();
-    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.sections.map((section) => section.content.title))).toEqual(before);
+    // The copywriter used to live here, behind two presses: one to draft and one
+    // to apply. Step 01's button does both, so neither button exists any more.
+    await expect(page.locator('[data-brain-action="write-content"]')).toHaveCount(0);
+    await expect(page.locator('[data-brain-action="apply-content"]')).toHaveCount(0);
+    await expect(page.locator('#editorInner')).not.toContainText('Fill the page with real copy');
+    // And the copy from the brief is on the page already.
+    const titles = await page.evaluate(() => window.__SBS_TEST_API.state.project.sections.map((section) => section.content.title));
+    expect(titles[0]).toBe('Copy for hero');
+    expect(titles.every((title) => title.startsWith('Copy for '))).toBe(true);
   });
 
   test('the layout tab shows only the plain-language groups', async ({ page }) => {

@@ -184,13 +184,18 @@ export function renderMediaPanel(context = {}) {
   const placed = new Set(media.assignments.map((entry) => entry.assetId));
   const stale = mediaIsStale(media, project.brief);
   const notConfigured = stock.configured === false;
+  // The simple builder's one button already did the search; here the panel is
+  // the library and the re-run, not a step somebody has to remember.
+  const simpleBuilder = context.builderMode === 'simple';
 
   return `<section class="${panelClass('brain-panel is-compact', busy)}" data-brain-panel>
     <header class="brain-panel-head">
       <div>
         <span class="brain-kicker">AI picture editor</span>
         <h2>Find imagery for this brief</h2>
-        <p>Searches the stock library for what this business actually looks like, then places one picture in each of the ${slots.length} media slot${slots.length === 1 ? '' : 's'} on the page — no picture twice. Team photos and testimonial portraits are left alone: those have to be the client's own people.</p>
+        <p>${simpleBuilder
+          ? `Step 01's button already searched for these and placed them across the ${slots.length} media slot${slots.length === 1 ? '' : 's'} on the page. Search again for a different set, drag any picture below onto a module to move it, or add one you found yourself.`
+          : `Searches the stock library for what this business actually looks like, then places one picture in each of the ${slots.length} media slot${slots.length === 1 ? '' : 's'} on the page — no picture twice.`} Team photos and testimonial portraits are left alone: those have to be the client's own people.</p>
       </div>
     </header>
     ${notConfigured ? '<p class="brain-hint is-warn">Stock search is not configured on this server. Add the Shutterstock credentials to <code>.env</code> and restart it.</p>' : ''}
@@ -200,7 +205,7 @@ export function renderMediaPanel(context = {}) {
     <div class="brain-actions">
       ${jobButton({
         action: 'find-media',
-        label: media.assets.length ? 'Search again' : 'Find imagery',
+        label: media.assets.length ? 'Search again' : simpleBuilder ? 'Search for imagery now' : 'Find imagery',
         workingLabel: 'Searching…',
         busy,
         disabled: locked || notConfigured || !slots.length,
@@ -547,6 +552,52 @@ const BRIEF_CHECKLIST = Object.freeze([
   ['voice', 'How it should sound'],
 ]);
 
+/*
+ * What the one button is doing, and what it did.
+ *
+ * Four jobs behind one press need to say which one they are on, or a
+ * forty-second wait reads as a hang. And once it is over, the counts are the
+ * only honest way to say what landed on the page: "3 concepts" when the
+ * copywriter timed out is a very different result from "3 concepts, 9 sections
+ * written, 7 pictures placed", and the difference must not be silent.
+ */
+const STAGE_LABELS = {
+  brief: 'Reading the brief…',
+  content: 'Writing the copy…',
+  media: 'Finding imagery…',
+  concepts: 'Building the concepts…',
+};
+
+const RUN_STAGES = [
+  ['brief', 'Reading the brief'],
+  ['content', 'Writing the copy'],
+  ['media', 'Finding imagery'],
+  ['concepts', 'Building the concepts'],
+];
+
+function runStages(simple, busy) {
+  if (!busy) return '';
+  const at = RUN_STAGES.findIndex(([key]) => key === simple.stage);
+  return `<ol class="brain-stages" aria-label="Progress">${RUN_STAGES.map(([key, label], index) => {
+    const state = at < 0 ? '' : index < at ? 'is-done' : index === at ? 'is-live' : '';
+    return `<li class="${state}"><i aria-hidden="true">${index < at ? '✓' : index + 1}</i>${esc(label)}</li>`;
+  }).join('')}</ol>`;
+}
+
+function runReport(simple) {
+  const report = simple.report;
+  if (!report) return '';
+  const counts = [
+    `${report.concepts} concept${report.concepts === 1 ? '' : 's'} designed`,
+    report.written ? `${report.written} section${report.written === 1 ? '' : 's'} written and applied` : '',
+    report.placed ? `${report.placed} picture${report.placed === 1 ? '' : 's'} found and placed` : '',
+  ].filter(Boolean);
+  return `<div class="brain-report">
+    <ul>${counts.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>
+    ${(report.notes || []).map((note) => `<p class="brain-hint is-warn">${esc(note)}</p>`).join('')}
+  </div>`;
+}
+
 function simpleReadbackMarkup(simple) {
   const readback = simple.readback;
   if (!readback) return '';
@@ -603,22 +654,18 @@ function conceptCard(concept, index, simple, context) {
 export function renderSimpleBriefPanel(context = {}) {
   const project = context.project || {};
   const simple = ensureSimpleState(project);
-  const brain = ensureBrainState(project);
   const busy = isSimpleBusy(simple);
-  // The copywriter runs on the shared brain slice, so its own working state is
-  // separate from the concept job's — both can be drawn honestly on one panel.
-  const writing = isBrainBusy(brain) && brain.status === 'writing';
   const written = String(simple.briefText || '').trim();
   const stale = conceptsAreStale(simple);
   const chosen = hasChosenConcept(simple);
 
-  return `<section class="${panelClass('brain-panel is-simple', busy || writing)}" data-brain-panel>
+  return `<section class="${panelClass('brain-panel is-simple', busy)}" data-brain-panel>
     <div class="brain-live" aria-live="polite" aria-atomic="true" data-brain-live>${esc(simple.liveMessage || brainStatusLabel(ensureBrainState(project)))}</div>
     <header class="brain-panel-head">
       <div>
         <span class="brain-kicker">AI brief reader · one paragraph is enough</span>
         <h2>Describe the project once</h2>
-        <p>Write about the business, the audience, the offer, the action you want and the tone you want. The brain reads it and builds three complete design concepts you can show a client straight away.</p>
+        <p>Write about the business, the audience, the offer, the action you want and the tone you want. One press then does the whole first pass: it designs three concepts, writes the copy for every section and puts it on the page, and finds the imagery and places it.</p>
       </div>
       <span class="brain-badge ${simple.status === 'error' ? 'is-error' : simple.concepts.length ? 'is-ready' : busy ? 'is-working' : ''}">${esc(
         simple.status === 'error' ? 'Needs attention'
@@ -646,13 +693,15 @@ export function renderSimpleBriefPanel(context = {}) {
       ${jobButton({
         action: 'build-concepts',
         label: simple.concepts.length ? 'Read the brief again' : 'Read my brief and build 3 concepts',
-        workingLabel: 'Reading and designing…',
+        workingLabel: STAGE_LABELS[simple.stage] || 'Working…',
         busy,
-        disabled: busy || writing || written.length < 20,
+        disabled: busy || written.length < 20,
       })}
       ${thinking(busy, simple.liveMessage)}
       ${written.length < 20 ? '<span class="brain-hint">A few sentences is enough to start.</span>' : ''}
     </div>
+    ${busy ? runStages(simple, busy) : ''}
+    ${busy ? '' : runReport(simple)}
 
     ${simpleReadbackMarkup(simple)}
 
@@ -662,78 +711,6 @@ export function renderSimpleBriefPanel(context = {}) {
       <div class="concept-grid">${simple.concepts.map((concept, index) => conceptCard(concept, index, simple, context)).join('')}</div>
       ${chosen ? '' : '<p class="brain-hint is-warn">Pick a concept to carry into the next step. You can switch between all three at any point without losing your work.</p>'}
     ` : ''}
-
-    ${simple.concepts.length ? simpleContentBlock({ brain, context, busy: writing, locked: busy || writing }) : ''}
-  </section>`;
-}
-
-/**
- * The copywriter, on the first step.
- *
- * Once the brain has read the brief it already knows everything the copy job
- * needs, and the three concepts on screen are still carrying the demo project's
- * words — which is exactly the moment a strategist wants real copy, not two
- * steps later. Applying is still a separate, explicit press, and Undo still
- * reverses it in one step.
- */
-function simpleContentBlock({ brain, context, busy, locked }) {
-  const sections = (context.project?.sections || []).length;
-  return `<div class="brain-subhead"><b>Write the page copy from this brief</b><small>${sections} module${sections === 1 ? '' : 's'} in the current flow</small></div>
-    <p class="brain-hint">Drafts every section using only the words in your brief. Nothing is invented, and nothing reaches the page until you press Apply.</p>
-    <div class="brain-actions">
-      ${jobButton({
-        action: 'write-content',
-        label: brain.contentDraft ? 'Rewrite the page copy' : 'Write the page copy',
-        workingLabel: 'Writing every section…',
-        busy,
-        disabled: locked || !sections,
-        variant: 'secondary',
-      })}
-      ${thinking(busy, brain.liveMessage)}
-    </div>
-    ${brain.contentDraft ? contentDraftMarkup(brain, context) : ''}`;
-}
-
-/**
- * Step 03 of the simple builder: one button that fills the page with copy drawn
- * from the paragraph in Step 01.
- *
- * Showing a client three concepts carrying the demo project's copy defeats the
- * point of the exercise, and the brief fields are already populated by then, so
- * this reuses the advanced builder's content job rather than adding a new one.
- */
-export function renderSimpleContentPanel(context = {}) {
-  const project = context.project || {};
-  const brain = ensureBrainState(project);
-  const simple = ensureSimpleState(project);
-  // Same split as the imagery panel: only this panel's own job spins, while any
-  // job in flight holds the button shut.
-  const busy = isBrainBusy(brain);
-  const locked = busy || isSimpleBusy(simple);
-  const sections = (project.sections || []).length;
-  const ready = Boolean(simple.readback || brain.understanding);
-
-  return `<section class="${panelClass('brain-panel is-compact', busy)}" data-brain-panel>
-    <header class="brain-panel-head">
-      <div>
-        <span class="brain-kicker">AI copywriter</span>
-        <h2>Fill the page with real copy</h2>
-        <p>Writes a first draft for all ${sections} section${sections === 1 ? '' : 's'} using only the words in your brief. Nothing is invented, and nothing is applied until you press Apply.</p>
-      </div>
-    </header>
-    ${ready ? '' : '<p class="brain-hint is-warn">Read your brief in Step 01 first so the copy has something to work from.</p>'}
-    ${brain.error ? `<p class="brain-error" role="alert">${esc(brain.error)}</p>` : ''}
-    <div class="brain-actions">
-      ${jobButton({
-        action: 'write-content',
-        label: brain.contentDraft ? 'Rewrite the page copy' : 'Write the page copy',
-        workingLabel: 'Writing every section…',
-        busy,
-        disabled: locked || !sections || !ready,
-      })}
-      ${thinking(busy, brain.liveMessage)}
-    </div>
-    ${brain.contentDraft ? contentDraftMarkup(brain, context) : ''}
   </section>`;
 }
 
