@@ -102,9 +102,30 @@ function isOpen(page) {
   });
 }
 
+/**
+ * Presses the burger, and does not return until the press took effect.
+ *
+ * Finding the toggle and pressing it have to be one step: split across two round
+ * trips they race a preview rebuild — the poll sees a toggle, the rebuild
+ * replaces the document, and the click lands on null. Existing *and* pressed is
+ * not enough either, because a document can be in the frame a moment before its
+ * runtime has bound the toggle, and a press with no listener behind it is
+ * silent. So the outcome is what is waited for: the class flipped. The handler
+ * flips it synchronously, so one round trip can both act and check.
+ *
+ * That race was this spec's standing flake, and it moved between tests on every
+ * run.
+ */
 async function openMenu(page) {
-  await expect.poll(() => page.locator('#sitePreview').evaluate((frame) => Boolean(frame.contentDocument?.querySelector('.sbs-menu-toggle')))).toBe(true);
-  await page.locator('#sitePreview').evaluate((frame) => frame.contentDocument.querySelector('.sbs-menu-toggle').click());
+  await expect.poll(() => page.locator('#sitePreview').evaluate((frame) => {
+    const doc = frame.contentDocument;
+    const toggle = doc?.querySelector('.sbs-menu-toggle');
+    const header = doc?.querySelector('.site-header');
+    if (!toggle || !header) return 'no toggle yet';
+    const before = header.classList.contains('menu-open');
+    toggle.click();
+    return header.classList.contains('menu-open') === before ? 'not bound yet' : 'pressed';
+  })).toBe('pressed');
 }
 
 function menuState(page) {

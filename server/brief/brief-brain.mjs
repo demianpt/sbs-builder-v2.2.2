@@ -1,17 +1,5 @@
 import { familyVocabularyPrompt, isSectionFamily, SECTION_FAMILY_IDS } from '../../shared/brief/families.mjs';
-import {
-  BriefExpansionJsonSchema,
-  BriefUnderstandingJsonSchema,
-  OutlinePlanJsonSchema,
-  PageContentJsonSchema,
-  buildConceptSetJsonSchema,
-  parseBriefExpansion,
-  parseBriefFields,
-  parseBriefUnderstanding,
-  parseConceptSet,
-  parseOutlinePlan,
-  parsePageContent,
-} from '../../shared/brief/schemas.mjs';
+import { BRIEF_TEXT_LIMIT, BriefExpansionJsonSchema, BriefUnderstandingJsonSchema, OutlinePlanJsonSchema, PageContentJsonSchema, buildConceptSetJsonSchema, parseBriefExpansion, parseBriefFields, parseBriefUnderstanding, parseConceptSet, parseOutlinePlan, parsePageContent } from '../../shared/brief/schemas.mjs';
 import {
   MediaAssignmentJsonSchema,
   MediaQueriesJsonSchema,
@@ -334,7 +322,7 @@ export function createBriefBrain({ provider, stock, config, logger } = {}) {
    * complete concepts and the five best flows out.
    */
   async function concepts(input = {}) {
-    const briefText = text(input.briefText, 4_000);
+    const briefText = text(input.briefText, BRIEF_TEXT_LIMIT);
     if (briefText.length < 20) {
       throw new BriefBrainError('BRIEF_REQUIRED', 'Write a little more about the project first.', { status: 422 });
     }
@@ -487,7 +475,7 @@ export function createBriefBrain({ provider, stock, config, logger } = {}) {
 
   /** Job 5 — split the simple builder's paragraph into the advanced fields. */
   async function expand(input = {}) {
-    const briefText = text(input.briefText, 4_000);
+    const briefText = text(input.briefText, BRIEF_TEXT_LIMIT);
     if (briefText.length < 20) {
       throw new BriefBrainError('BRIEF_REQUIRED', 'There is not enough brief text to split into fields.', { status: 422 });
     }
@@ -545,7 +533,7 @@ export function createBriefBrain({ provider, stock, config, logger } = {}) {
     }
     // Either builder may call this: the advanced one has fields, the simple one
     // has a paragraph. Whatever is missing is split out of the paragraph.
-    const briefText = text(input.briefText, 4_000);
+    const briefText = text(input.briefText, BRIEF_TEXT_LIMIT);
     const fields = parseBriefFields(input.brief);
     const local = briefText ? expandBriefText(briefText) : {};
     const brief = Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value || local[key] || '']));

@@ -20,6 +20,25 @@ import { SECTION_FAMILY_IDS, isSectionFamily } from './families.mjs';
  * and the deterministic planner answers instead.
  */
 
+/**
+ * How much brief the model is given.
+ *
+ * A strategist types a paragraph; a document *is* the brief, and a ten-page
+ * meeting-notes PDF runs to twelve thousand characters of it. Capping at four
+ * thousand meant a dropped document lost its last two thirds — which in a
+ * discovery document is the audience, the scope and the budget, the whole reason
+ * to read it in the first place. Sixteen thousand characters is about four
+ * thousand tokens: a full discovery document, and still a small fraction of the
+ * context the model has.
+ *
+ * Stated once, here beside the schema that enforces it, and taken from here by
+ * the browser, the server and the file reader.
+ */
+export const BRIEF_TEXT_LIMIT = 16_000;
+
+/** The document itself, kept verbatim on the brief as the internal note. */
+export const BRIEF_NOTES_LIMIT = 6_000;
+
 export const BRIEF_SCHEMA_VERSION = 'sbs-brief-brain/1.0';
 
 const trimmed = (max) => z.string().transform((value) => value.trim()).pipe(z.string().max(max));
@@ -86,7 +105,7 @@ export const BriefFieldsSchema = z.object({
   offer: optionalText(1_200),
   tone: optionalText(1_200),
   keywords: optionalText(600),
-  notes: optionalText(2_000),
+  notes: optionalText(BRIEF_NOTES_LIMIT),
 });
 
 export const BRIEF_FIELD_ORDER = Object.freeze([
@@ -688,7 +707,7 @@ export const BriefExpansionSchema = z.object({
   offer: optionalText(1_200),
   tone: optionalText(1_200),
   keywords: optionalText(600),
-  notes: optionalText(2_000),
+  notes: optionalText(BRIEF_NOTES_LIMIT),
 });
 
 export const BriefExpansionJsonSchema = Object.freeze({

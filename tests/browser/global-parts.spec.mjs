@@ -131,6 +131,55 @@ test.describe('the navigation and the footer step like a module', () => {
     await expect.poll(() => page.locator('#sitePreview').evaluate((frame) => frame.contentDocument.querySelector('.site-header').classList.contains('menu-open'))).toBe(true);
   });
 
+  test('the controls hold still while the pointer travels down to them', async ({ page }) => {
+    await openPreview(page);
+    await hoverPart(page, '@header');
+
+    // The controls sit in a strip below the navigation, which is drawn over the
+    // module that follows it. Reaching them means crossing those pixels — and
+    // one `mousemove` on the hero used to retarget the whole overlay, so the
+    // arrows were gone before the pointer arrived and the navigation could never
+    // actually be changed from the preview.
+    const arrow = await page.locator('#previewHud .pv-hud__arrow.-next').boundingBox();
+    const start = await page.evaluate(() => {
+      const frame = document.getElementById('sitePreview');
+      const zoom = window.__SBS_TEST_API.state.zoom || 1;
+      const frameBox = frame.getBoundingClientRect();
+      const header = frame.contentDocument.querySelector('.site-header').getBoundingClientRect();
+      return { x: frameBox.left + (header.width / 2) * zoom, y: frameBox.top + (header.height / 2) * zoom };
+    });
+
+    await page.mouse.move(start.x, start.y);
+    const seen = [];
+    for (let step = 1; step <= 8; step += 1) {
+      await page.mouse.move(
+        start.x + ((arrow.x + arrow.width / 2 - start.x) * step) / 8,
+        start.y + ((arrow.y + arrow.height / 2 - start.y) * step) / 8,
+      );
+      await page.waitForTimeout(40);
+      seen.push(await page.evaluate(() => window.__SBS_TEST_API.previewSwitcher.hoverId()));
+    }
+    expect(new Set(seen), 'the overlay retargeted on the way to its own arrow').toEqual(new Set(['@header']));
+
+    // And the arrow it held still for actually works from there.
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.header.variant)).toBe('centered');
+  });
+
+  test('the module below the navigation is still selectable once the pointer is past the strip', async ({ page }) => {
+    await openPreview(page);
+    await hoverPart(page, '@header');
+    const stage = await page.locator('.preview-stage').boundingBox();
+    for (let y = 20; y < stage.height - 10; y += 30) {
+      await page.mouse.move(stage.x + stage.width / 2, stage.y + y);
+      await page.waitForTimeout(50);
+      const hovered = await page.evaluate(() => window.__SBS_TEST_API.previewSwitcher.hoverId());
+      if (hovered && hovered !== '@header') return;
+    }
+    throw new Error('the guard band never released: no module could be hovered below the navigation');
+  });
+
   test('the arrow keys walk the navigation through all five layouts and wrap', async ({ page }) => {
     await openPreview(page);
     await hoverPart(page, '@header');

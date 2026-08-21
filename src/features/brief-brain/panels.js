@@ -1,19 +1,7 @@
 import { directiveSummary } from '../../../shared/brief/directives.mjs';
 import { SECTION_FAMILIES, sectionFamilyLabel } from '../../../shared/brief/families.mjs';
 import { BRIEF_FIELD_ORDER, briefReadiness } from '../../../shared/brief/schemas.mjs';
-import {
-  brainStatusLabel,
-  conceptsAreStale,
-  ensureBrainState,
-  ensureMediaState,
-  ensureSimpleState,
-  hasChosenConcept,
-  isBrainBusy,
-  isMediaBusy,
-  isSimpleBusy,
-  mediaIsStale,
-  understandingIsStale,
-} from './state.js';
+import { BRIEF_TEXT_LIMIT, brainStatusLabel, conceptsAreStale, ensureBrainState, ensureMediaState, ensureSimpleState, hasChosenConcept, isBrainBusy, isMediaBusy, isSimpleBusy, mediaIsStale, understandingIsStale } from './state.js';
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -134,7 +122,10 @@ function assetTile(asset, used) {
   const thumb = asset.thumb || asset.poster || asset.src;
   const purchase = assetPurchaseUrl(asset);
   const id = esc(asset.assetId || '');
-  return `<figure class="brain-asset${used ? ' is-used' : ''}" title="${esc(asset.alt)}">
+  // `data-media-drag`, not `data-project-media`: the builder's picker uses that
+  // second name for "click to place", and a gallery tile with a copy-id button
+  // inside it must not place anything when it is clicked.
+  return `<figure class="brain-asset${used ? ' is-used' : ''}" data-media-drag="${esc(asset.id || '')}" title="${esc(asset.alt)}">
     <img loading="lazy" src="${esc(thumb)}" alt="">
     ${badge}
     <figcaption>${used ? 'Placed' : 'Spare'}</figcaption>
@@ -638,14 +629,15 @@ export function renderSimpleBriefPanel(context = {}) {
     ${providerLine(ensureBrainState(project))}
 
     <label class="brain-field" for="simple-brief"><span>The project, in your own words</span>
-      <textarea id="simple-brief" rows="10" maxlength="4000" placeholder="${esc(BRIEF_PLACEHOLDER)}" data-brain-field="briefText" data-brain-scope="simple"${off(busy)}>${esc(simple.briefText || '')}</textarea>
+      <textarea id="simple-brief" rows="10" maxlength="${BRIEF_TEXT_LIMIT}" placeholder="${esc(BRIEF_PLACEHOLDER)}" data-brain-field="briefText" data-brain-scope="simple"${off(busy)}>${esc(simple.briefText || '')}</textarea>
     </label>
+    ${typeof context.briefDropZone === 'function' ? context.briefDropZone() : ''}
     <div class="brief-checklist">
       ${BRIEF_CHECKLIST.map(([key, label]) => {
         const covered = Boolean(simple.readback && simple.readback[key] && !(simple.missingFields || []).includes(key));
         return `<span class="${covered ? 'is-covered' : ''}"><i aria-hidden="true">${covered ? '✓' : '·'}</i>${esc(label)}</span>`;
       }).join('')}
-      <em>${written.length} / 4000 characters</em>
+      <em>${written.length.toLocaleString()} / ${BRIEF_TEXT_LIMIT.toLocaleString()} characters</em>
     </div>
     ${simple.error ? `<p class="brain-error" role="alert">${esc(simple.error)}</p>` : ''}
     ${stale ? '<p class="brain-hint is-warn">The brief has changed since these concepts were built. Read it again to refresh them.</p>' : ''}

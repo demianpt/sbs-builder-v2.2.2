@@ -330,6 +330,58 @@ button,input,textarea,select{font:inherit}button{color:inherit}a{color:inherit}.
 .panel-note.is-people{border-left:2px solid #e0c899;padding-left:10px}
 
 /* ------------------------------------------------------------------ *
+ * The brief, dropped in as a document
+ *
+ * Two surfaces: a permanent zone in the brief step that can also be clicked,
+ * and a full-window sheet that appears the moment a file is dragged over the
+ * app — so the target is never something that has to be aimed at.
+ * ------------------------------------------------------------------ */
+.brief-file-drop{margin:14px 0 4px}
+.brief-file-drop__pick{
+  display:flex;flex-direction:column;gap:4px;
+  padding:16px 18px;cursor:pointer;
+  border:1px dashed #c3bfb6;background:#faf9f6;
+  transition:border-color .14s ease,background .14s ease;
+}
+.brief-file-drop__pick:hover,.brief-file-drop.is-over .brief-file-drop__pick{border-color:var(--ui-accent);background:#fdf5f2}
+.brief-file-drop__pick input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.brief-file-drop__pick b{font-size:12px}
+.brief-file-drop__pick span{font-size:11px;line-height:1.5;color:var(--ui-muted)}
+.brief-file-drop__pick:focus-within{outline:2px solid var(--ui-accent);outline-offset:2px}
+
+.brief-drop{position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:rgba(28,25,22,.5);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+.brief-drop[hidden]{display:none}
+.brief-drop__card{
+  display:flex;flex-direction:column;gap:7px;text-align:center;
+  padding:34px 42px;max-width:min(460px,84vw);
+  background:var(--ui-paper);border:2px dashed var(--ui-accent);
+  box-shadow:0 24px 60px -28px rgba(20,18,16,.7);
+  animation:brief-drop-in .14s ease both;
+}
+.brief-drop__card b{font:600 19px/1.15 Source Serif 4,serif;letter-spacing:-.02em}
+.brief-drop__card span{font-size:12px;line-height:1.55;color:var(--ui-muted)}
+@keyframes brief-drop-in{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.brief-drop__card{animation:none}}
+
+/* A picture tile is draggable onto the preview, and says so with the cursor.
+   While one is in flight the preview is the target, so nothing in the editor
+   should look like it wants the drop. */
+.media-option[draggable="true"],.brain-asset[draggable="true"],[data-slot-library][draggable="true"]{cursor:grab}
+.media-option[draggable="true"]:active,.brain-asset[draggable="true"]:active{cursor:grabbing}
+body.is-media-dragging .editor{cursor:grabbing}
+body.is-media-dragging .pv-hud{opacity:.35;transition:opacity .12s ease}
+
+/* Arriving from "Edit module" in the preview: the editor scrolls here, and the
+   panel says so for a moment so the landing is not silent. */
+.panel.is-revealed,.panel-collapsible.is-revealed{
+  border-color:var(--ui-accent);
+  box-shadow:0 0 0 3px rgba(237,91,56,.14);
+  animation:panel-revealed 1.4s ease forwards;
+}
+@keyframes panel-revealed{0%,55%{box-shadow:0 0 0 3px rgba(237,91,56,.18)}100%{box-shadow:0 0 0 3px rgba(237,91,56,0)}}
+@media(prefers-reduced-motion:reduce){.panel.is-revealed,.panel-collapsible.is-revealed{animation:none}}
+
+/* ------------------------------------------------------------------ *
  * The preview pattern switcher
  *
  * An overlay drawn in the builder's document, over the preview frame. It sits
@@ -434,8 +486,13 @@ button,input,textarea,select{font:inherit}button{color:inherit}a{color:inherit}.
 .pv-hud.is-chrome .pv-hud__index{background:var(--ui-side);min-width:30px;letter-spacing:.04em}
 /* One strip, just below the navigation: nothing the overlay owns overlaps
    anything the navigation owns. */
-.pv-hud.is-chrome.is-header .pv-hud__bar{top:calc(100% + 10px);left:96px;border-radius:4px}
+.pv-hud.is-chrome.is-header .pv-hud__bar{top:calc(100% + 10px);left:96px;border-radius:4px;max-width:calc(100% - 260px)}
 .pv-hud.is-chrome.is-header .pv-hud__tools{top:calc(100% + 10px);right:12px}
+/* A phone frame is 390px wide: the label would run under the buttons, so on a
+   narrow shell the strip keeps the arrows and the actions and drops the prose.
+   The width is measured in JS when the overlay is placed — there is no ancestor
+   query container here, and adding one would change the frame's containment. */
+.pv-hud.is-chrome.is-header.is-narrow .pv-hud__bar{display:none}
 .pv-hud.is-chrome.is-header .pv-hud__arrow{top:calc(100% + 10px);transform:none;width:34px;height:34px}
 .pv-hud.is-chrome.is-header .pv-hud__arrow:hover{transform:scale(1.08)}
 .pv-hud.is-chrome.is-header .pv-hud__arrow:active{transform:scale(.94)}

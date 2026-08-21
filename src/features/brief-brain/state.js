@@ -1,9 +1,9 @@
 import { SECTION_FAMILY_IDS, sectionFamilyLabel } from '../../../shared/brief/families.mjs';
-import { BRIEF_FIELD_ORDER, briefReadiness } from '../../../shared/brief/schemas.mjs';
+import { BRIEF_FIELD_ORDER, BRIEF_TEXT_LIMIT, briefReadiness } from '../../../shared/brief/schemas.mjs';
 
 export const BRAIN_SCHEMA_VERSION = 'sbs-brief-brain/1.0';
 
-export { BRIEF_FIELD_ORDER, briefReadiness, SECTION_FAMILY_IDS, sectionFamilyLabel };
+export { BRIEF_FIELD_ORDER, BRIEF_TEXT_LIMIT, briefReadiness, SECTION_FAMILY_IDS, sectionFamilyLabel };
 
 /**
  * The Brief Brain's client state. It lives on the project so a strategist can
@@ -218,14 +218,14 @@ export function conceptsAreStale(simple) {
 export function buildConceptsRequest({ project, archetypes, flows }) {
   const understand = buildUnderstandRequest({ project, archetypes, flows });
   return {
-    briefText: String(project?.simple?.briefText || '').slice(0, 4_000),
+    briefText: String(project?.simple?.briefText || '').slice(0, BRIEF_TEXT_LIMIT),
     archetypes: understand.archetypes,
     flows: understand.flows,
   };
 }
 
 export function buildExpandRequest(briefText) {
-  return { briefText: String(briefText || '').slice(0, 4_000) };
+  return { briefText: String(briefText || '').slice(0, BRIEF_TEXT_LIMIT) };
 }
 
 export const MEDIA_SCHEMA_VERSION = 'sbs-brief-media/1.0';
@@ -299,7 +299,7 @@ export function buildMediaRequest({ project, slots }) {
     brief: Object.fromEntries(BRIEF_FIELD_ORDER.map(([key]) => [key, String(project?.brief?.[key] ?? '')])),
     // The simple builder has one paragraph and may have no fields yet; the
     // server splits it rather than searching on an empty brief.
-    briefText: String(project?.simple?.briefText || '').slice(0, 4_000),
+    briefText: String(project?.simple?.briefText || '').slice(0, BRIEF_TEXT_LIMIT),
     slots: (slots || []).slice(0, 48),
   };
 }

@@ -13,6 +13,7 @@ import { PALETTE_ROLES as PALETTE_ROLE_KEYS, contrastRatio as paletteContrast, p
 import { SECTION_FAMILIES } from '../../shared/brief/families.mjs';
 import { isPeopleFamily } from '../../shared/brief/media.mjs';
 import { briefDirectives } from '../../shared/brief/planner.mjs';
+import { BRIEF_DOCUMENT_ACCEPT, BRIEF_TEXT_LIMIT, briefDocumentKind, isBriefDocument, readBriefDocument, readBriefDocuments } from '../../shared/brief/documents.mjs';
 import { fontOptions } from '../../shared/design/fonts.mjs';
 import { createConceptSetBundle, createProjectBundle, downloadBlob } from '../utils/project-bundle.js';
 
@@ -476,7 +477,8 @@ function renderAdvancedEditor(s){return `<div class="panel-note">This is the act
 function renderModules(){const s=state.project.sections.find(x=>x.id===state.selectedSectionId)||state.project.sections[0];if(s)state.selectedSectionId=s.id;const editor=s?({content:renderContentEditor,media:renderMediaEditor,layout:renderLayoutEditor,advanced:renderAdvancedEditor}[state.editorTab]||renderContentEditor)(s):'';return pageHead('04 · Modules','Shape each module without leaving DST.','Switch among all registered SBS patterns, edit the content model, choose skill media, tune effects, or inspect the exact block tree.',s?`${s.family} · ${s.patternId}`:'No modules')+
  panel('Page modules',`<div id="moduleList" class="module-list">${moduleRows()}</div><button class="add-row" data-action="add-module" style="width:100%;margin-top:8px">+ Add a DST module</button>`,'Select to edit')+
  (s?panel('Selected pattern',`<div class="pattern-summary"><div class="pattern-thumb"></div><div><b>${esc(patternLabel(s))}</b><span>${esc(s.patternId)} · ${esc(s.family)}</span></div><button class="text-btn" data-action="choose-pattern">Change pattern</button></div>`)+
- panel('Module editor',`<div class="segmented" style="margin-bottom:15px"><button class="${state.editorTab==='content'?'active':''}" data-editor-tab="content">Content</button><button class="${state.editorTab==='media'?'active':''}" data-editor-tab="media">Media</button><button class="${state.editorTab==='layout'?'active':''}" data-editor-tab="layout">Layout + effects</button><button class="${state.editorTab==='advanced'?'active':''}" data-editor-tab="advanced">DST tree</button></div>${editor}`):`<div class="empty-state"><b>Add the first module</b><p>Choose from the complete registered pattern library.</p><button class="export-btn" data-action="add-module">Add module</button></div>`)+renderEditorNav()}
+ panel('Module editor',`<div class="segmented" style="margin-bottom:15px"><button class="${state.editorTab==='content'?'active':''}" data-editor-tab="content">Content</button><button class="${state.editorTab==='media'?'active':''}" data-editor-tab="media">Media</button><button class="${state.editorTab==='layout'?'active':''}" data-editor-tab="layout">Layout + effects</button><button class="${state.editorTab==='advanced'?'active':''}" data-editor-tab="advanced">DST tree</button></div>${editor}`,'',
+ 'data-module-editor'):`<div class="empty-state"><b>Add the first module</b><p>Choose from the complete registered pattern library.</p><button class="export-btn" data-action="add-module">Add module</button></div>`)+renderEditorNav()}
 function validateProject(){const sections=state.project.sections;const comps=[];const images=[];sections.forEach(s=>walkNode(s.node,n=>{comps.push(n.component);const a=n.attributes||{};if(a.media?.src)images.push(a.media);if(a.backgroundImage?.src)images.push(a.backgroundImage)}));const unknown=[...new Set(comps.filter(c=>!DATA.registry[c]))];const patternMissing=sections.filter(s=>!patternMap.has(s.patternId));const heroCount=sections.filter(s=>s.family==='hero').length;const scrollCount=sections.filter(s=>s.effects?.scroll).length;const animatedHeading=sections.filter(s=>s.effects?.viewport==='animate-headings').length;const emptyTitles=sections.filter(s=>!cleanText(s.content?.title));const missingAlt=images.filter(m=>m.src&&!cleanText(m.alt));const checks=[
  {status:sections.length>=3?'pass':'fail',title:'Page has a complete sequence',detail:`${sections.length} modules in the current flow.`,code:'STRUCTURE'},
  {status:heroCount===1?'pass':heroCount?'warn':'fail',title:'One clear opening hero',detail:`Found ${heroCount} hero module${heroCount===1?'':'s'}.`,code:'HERO'},
@@ -727,7 +729,7 @@ setTimeout(updateDevice,100);
 (function(){
 'use strict';
 
-var SBS_BUILDER_VERSION='2.5.0';
+var SBS_BUILDER_VERSION='2.6.0';
 var legacySiteCssV1=siteCss;
 var legacyApplyArchetypeV1=applyArchetype;
 var legacyValidateProjectV1=validateProject;
@@ -3820,7 +3822,32 @@ renderEditor=function(){
     ? [v4SimpleBrief,v4SimpleFlow,v4SimpleModules,v4SimpleReview]
     : [renderBrief,renderDirection,renderFlow,renderModules,renderReview];
   state.currentStep=clamp(state.currentStep,0,renderers.length-1);
-  byId('editorInner').innerHTML=renderers[state.currentStep]();
+  var host=byId('editorInner');
+  /*
+   * Replacing the markup blurs whatever was focused, and a blur on a field whose
+   * value has been typed into is answered with a `change` — carrying the value
+   * that field held *before* this render. To every handler on this element that
+   * is indistinguishable from somebody typing, so a programmatic edit that
+   * causes a render gets overwritten by its own stale markup a moment later.
+   * That is how a brief read out of a dropped document vanished while the cursor
+   * was still in the textarea. Nothing that happens during the swap is a person
+   * editing, so nothing during the swap is delivered.
+   */
+  var swallow=function(event){
+    if(host.contains(event.target))event.stopImmediatePropagation();
+  };
+  // On the document, not on the editor: the handlers being headed off are
+  // themselves capture listeners on the editor, and among listeners on one node
+  // in one phase the earlier registration wins. The document is upstream of all
+  // of them.
+  document.addEventListener('input',swallow,true);
+  document.addEventListener('change',swallow,true);
+  try{
+    host.innerHTML=renderers[state.currentStep]();
+  }finally{
+    document.removeEventListener('input',swallow,true);
+    document.removeEventListener('change',swallow,true);
+  }
   bindDragRows();
 };
 
@@ -3995,7 +4022,7 @@ function v4SimpleModules(){
       ? panel('Selected pattern','<div class="pattern-summary"><div class="pattern-thumb"></div><div><b>'+esc(patternLabel(section))+'</b><span>'+esc(section.family)+'</span></div><button class="text-btn" data-action="choose-pattern">Change pattern</button></div>')+
         panel('Module editor','<div class="segmented" style="margin-bottom:15px">'+SIMPLE_EDITOR_TABS.map(function(tab){
           return '<button class="'+(state.editorTab===tab[0]?'active':'')+'" data-editor-tab="'+tab[0]+'">'+tab[1]+'</button>';
-        }).join('')+'</div>'+editor)
+        }).join('')+'</div>'+editor,'','data-module-editor')
       : '<div class="empty-state"><b>Add the first section</b><p>Choose from the registered pattern library.</p><button class="export-btn" data-action="add-module">Add section</button></div>')+
     renderEditorNav();
 }
@@ -4728,9 +4755,8 @@ function v5ApplyMediaPlan(plan){
       var entries=bySection[section.id];
       if(!entries||!entries.length)return;
       v5FillSlots(section,entries,function(slot){
-        var asset=slot.asset;
         placed+=1;
-        return asMedia({src:asset.src,alt:asset.alt,source:'Shutterstock',kind:asset.kind,poster:asset.poster,assetId:asset.assetId,provider:asset.provider,licence:'preview',url:asset.url});
+        return v5AssetMedia(slot.asset);
       });
     });
     // The caller announces the full result — counts, videos and any slot left
@@ -4826,6 +4852,11 @@ v4SimpleModules=function(){return v5WithMediaPanel(v4SimpleModulesBeforeV5())};
  * client's colleague, not a stock model.
  * ---------------------------------------------------------------- */
 
+/** One found asset as a media object. The watermark stays a preview until bought. */
+function v5AssetMedia(asset){
+  return asMedia({src:asset.src,alt:asset.alt,source:'Shutterstock',kind:asset.kind,poster:asset.poster,assetId:asset.assetId,provider:asset.provider,licence:'preview',url:asset.url});
+}
+
 function v5ProjectAssets(){
   var media=briefBrainFeature.ensureMediaState(state.project);
   return media&&Array.isArray(media.assets)?media.assets:[];
@@ -4893,7 +4924,7 @@ byId('editorInner').addEventListener('click',function(event){
   var asset=v5ProjectAssets().find(function(entry){return entry.id===trigger.dataset.projectMedia});
   var section=state.project.sections.find(function(entry){return entry.id===state.selectedSectionId});
   if(!asset||!section)return;
-  var media=asMedia({src:asset.src,alt:asset.alt,source:'Shutterstock',kind:asset.kind,poster:asset.poster,assetId:asset.assetId,provider:asset.provider,licence:'preview',url:asset.url});
+  var media=v5AssetMedia(asset);
   // A picker inside a slot row targets that slot; the header picker still means
   // "this module's main visual", which is what it has always meant.
   var slot=trigger.dataset.slotKey?v5SectionSlots(section).find(function(entry){return entry.key===trigger.dataset.slotKey}):null;
@@ -5431,6 +5462,32 @@ var V6_HIDE_MS=140;
 
 var v6Hud=null,v6HoverId='',v6HideTimer=null,v6Frame=0,v6BoundDoc=null;
 
+/*
+ * The navigation's own controls cannot sit on the navigation — every pixel of it
+ * is already a control — so they sit in a strip beside and below it. That strip
+ * is drawn over whatever module follows the header, and the pointer has to cross
+ * those pixels to reach a button.
+ *
+ * Without this they belong to that module: one `mousemove` on the hero and the
+ * overlay retargets, so the arrows are gone before the pointer arrives. The band
+ * the strip occupies therefore reads as part of the header for as long as the
+ * header is the thing being described.
+ */
+var V6_CHROME_GUARD=58;
+function v6ChromeGuard(clientY){
+  var kind=v6ChromeKind(v6HoverId);
+  if(!kind||!v6BoundDoc)return false;
+  var node=v6BoundDoc.querySelector(v6ChromePart(kind).selector);
+  if(!node)return false;
+  // The strip is measured in builder pixels and the event in page pixels, so
+  // the reach has to be divided by the shell's scale, not added to it.
+  var box=node.getBoundingClientRect(),reach=V6_CHROME_GUARD/(state.zoom||1);
+  // Only the header pays for this. The footer's controls sit inside the footer,
+  // so guarding it would only cost the module above it its bottom edge.
+  if(kind!=='header')return false;
+  return clientY>=box.top&&clientY<=box.bottom+reach;
+}
+
 /**
  * The header and the footer, addressed the same way a module is.
  *
@@ -5506,7 +5563,17 @@ function v6BuildHud(){
     if(action==='prev')v6Step(v6HoverId,-1);
     else if(action==='next')v6Step(v6HoverId,1);
     else if(action==='browse'){v6Select(v6HoverId);openPatternModal('change')}
-    else if(action==='edit'){v6Select(v6HoverId);goStep(v4IsSimple()?2:3)}
+    else if(action==='edit'){
+      var wanted=v6HoverId;
+      v6Select(wanted);
+      goStep(v4IsSimple()?2:3);
+      // After the step has rendered: the panel does not exist to measure until
+      // `renderEditor` has run, and the scroll has to start from the top the
+      // step reset it to.
+      requestAnimationFrame(function(){
+        if(v6RevealModuleEditor())announce('Editing '+(v6Section(wanted)?patternLabel(v6Section(wanted)):'this module'));
+      });
+    }
     else if(action==='mobile')v6StepMobileMenu();
     else if(action==='globals')v6OpenGlobals(v6ChromeKind(v6HoverId));
   });
@@ -5583,6 +5650,9 @@ function v6Place(hud,geometry){
   hud.frame.style.top=Math.round(geometry.top)+'px';
   hud.frame.style.width=Math.round(geometry.width)+'px';
   hud.frame.style.height=Math.round(geometry.height)+'px';
+  // The header's controls stand in one strip; on a phone shell there is not room
+  // for the label as well as the arrows and the actions.
+  hud.root.classList.toggle('is-narrow',geometry.width<640);
   hud.frame.style.setProperty('--pv-bar',Math.round(geometry.barTop)+'px');
   hud.frame.style.setProperty('--pv-centre',Math.round(geometry.centre)+'px');
 }
@@ -5669,6 +5739,30 @@ function v6Track(){
     if(v6HoverId)v6Paint(v6HoverId);
   });
 }
+
+/**
+ * Scrolls the editor to the module editor and says so.
+ *
+ * "Edit module" changes step, and a step opens at the top — which is the brief
+ * reader, the sequence and the imagery panel before the thing that was asked
+ * for. Jumping straight there would leave no clue that the page moved, so the
+ * travel is animated unless motion is switched off, and the panel is marked for
+ * a moment when it arrives.
+ */
+function v6RevealModuleEditor(){
+  var view=document.querySelector('.editor'),
+    target=document.querySelector('#editorInner [data-module-editor]');
+  if(!view||!target)return false;
+  var top=target.getBoundingClientRect().top-view.getBoundingClientRect().top+view.scrollTop-16;
+  // `auto` defers to the stylesheet's own scroll-behavior, which is smooth here;
+  // `instant` is the only value that really means no animation.
+  view.scrollTo({top:Math.max(0,top),behavior:v6Still()?'instant':'smooth'});
+  target.classList.add('is-revealed');
+  clearTimeout(v6RevealTimer);
+  v6RevealTimer=setTimeout(function(){target.classList.remove('is-revealed')},1400);
+  return true;
+}
+var v6RevealTimer=null;
 
 function v6Select(sectionId){
   if(!sectionId||v6ChromeKind(sectionId)||state.selectedSectionId===sectionId)return;
@@ -5859,6 +5953,7 @@ function v6BindPreview(){
     var id=sectionAt(event.target);
     if(!id){v6QueueHide();return}
     if(id===v6HoverId){v6Track();return}
+    if(v6ChromeGuard(event.clientY)){v6Track();return}
     v6Show(id);
   },{passive:true});
   // `mouseleave` does not reach the document from an iframe body; a `mouseout`
@@ -5868,7 +5963,9 @@ function v6BindPreview(){
   },{passive:true});
   doc.addEventListener('click',function(event){
     var id=sectionAt(event.target);
-    if(id)v6Select(id);
+    // A click in the guard band is a click on the page, but it must not select a
+    // module the overlay is not describing.
+    if(id&&!v6ChromeGuard(event.clientY))v6Select(id);
   },true);
   view.addEventListener('scroll',v6Track,{passive:true});
 }
@@ -6171,7 +6268,406 @@ applyArchetype=function(key){
   },{history:false,message:'Applied archetype '+key+', keeping what your brief asked for'});
 };
 
-v2EnsureProject(state.project);state.project.sections.forEach(function(s){ensureSectionSettings(s);syncSectionNode(s)});window.__SBS_TEST_API={version:SBS_BUILDER_VERSION,previewSwitcher:{step:v6Step,pool:v6PatternPool,hoverId:function(){return v6HoverId},show:v6Show,hide:v6Hide,geometry:v6Geometry},patternChoice:function(family,index){return v8RankPatterns(family,{index:index||0}).slice(0,8).map(function(entry){return {id:entry.pattern.id,score:entry.score,why:entry.why}})},pickPattern:function(family,index){return (v8PickPattern(family,index||0)||{}).id||''},briefDirectives:function(){return briefDirectives(state.project.brief)},ensureProject:v2EnsureProject,buildTheme:function(p,options){return buildTheme(p||state.project,options||{})},buildSiteDocument:function(p,options){return buildSiteDocument(p||state.project,options||{})},buildPageExport:function(p){return buildPageExport(p||state.project)},buildNavigationExport:function(p){return buildNavigationExport(p||state.project)},buildFooterExport:function(p){return buildFooterExport(p||state.project)},buildGlobalsExport:function(p){return buildGlobalsExport(p||state.project)},buildCompleteExport:function(p){return buildExport(p||state.project)},auditDocument:v2AuditDocument,createSection:createSection,patternIds:DATA.patterns.map(function(p){return p.id}),patterns:DATA.patterns.map(function(p){return {id:p.id,family:p.family}}),flowIds:FLOW_CATALOG.map(function(f){return f.id}),flowCatalog:FLOW_CATALOG,allFlows:function(p){return allFlows(p||state.project)},design:{ensure:v3EnsureDesign,dialTokens:function(p){return dialTokens((p||state.project).design)},dialLevels:function(p){return dialLevels((p||state.project).design)},dialCss:function(p){return dialCss((p||state.project).design)},buttonStyleCss:buttonStyleCss,presets:DIAL_PRESETS,dialKeys:DIAL_KEYS,buttonStyles:BUTTON_STYLES},brain:{applyContentDraft:v3ApplyContentDraft,applyCustomFlow:v3ApplyCustomFlow,sectionFamilies:SECTION_FAMILIES},media:{sectionSlots:v5SectionSlots,slots:function(){return v5MediaSlots(state.project)},fillSlots:v5FillSlots,applyPlan:v5ApplyMediaPlan,clearPlan:v5ClearMediaPlan},simple:{mode:v4Mode,setMode:v4SetMode,steps:v4Steps,ensure:function(){return v4EnsureSimple(state.project)},applyConcept:v4ApplyConcept,normalizeConcepts:v4NormalizeConcepts,buildConceptExport:function(p){return v4BuildConceptExport(p||state.project)},importConcept:v4ImportConcept,canLeaveBrief:v4CanLeaveSimpleBrief},styles:{
+
+/* ================================================================== *
+ * v11 — Dropping a picture on the module it belongs to
+ *
+ * The imagery is in the editor and the page is in the preview, and until now the
+ * only way across was to select a module, open its Media tab, find the slot in a
+ * list and click the tile. That is three decisions to express one: *this* picture,
+ * *there*.
+ *
+ * So every tile in the editor is draggable and every rendered picture in the
+ * preview is a target. The slot is resolved from what the pointer is actually
+ * over — a card takes that card's picture, a split takes that half's, a banner
+ * takes its background — using the same slot list the stock-imagery job fills, so
+ * a slot that can be dropped on is a slot the pattern really renders.
+ * ================================================================== */
+
+/* What is being dragged, held here rather than only on the DataTransfer: the
+ * payload has to be readable during `dragover` to decide whether the module can
+ * take it, and `getData` is deliberately empty until the drop. */
+var v11Drag=null;
+
+var V11_TILE_SELECTOR='.media-option[data-project-media],.media-option[data-media-index],[data-slot-library],[data-media-drag]';
+
+/** Marks every picture tile in the editor as draggable. Called after each render. */
+function v11MarkMediaTiles(){
+  var host=byId('editorInner');
+  if(!host)return 0;
+  var tiles=host.querySelectorAll(V11_TILE_SELECTOR);
+  Array.prototype.forEach.call(tiles,function(tile){
+    tile.setAttribute('draggable','true');
+    if(!tile.dataset.dragHinted){
+      tile.dataset.dragHinted='1';
+      var hint='Drag onto any module in the preview to place it there';
+      tile.title=tile.title?tile.title+' · '+hint:hint;
+    }
+  });
+  return tiles.length;
+}
+
+var renderEditorBeforeV11=renderEditor;
+renderEditor=function(){
+  renderEditorBeforeV11();
+  v11MarkMediaTiles();
+};
+
+/** The media object one tile stands for, whichever kind of tile it is. */
+function v11TileMedia(tile){
+  if(!tile||!tile.dataset)return null;
+  var assetId=tile.dataset.projectMedia||tile.dataset.mediaDrag;
+  if(assetId){
+    var asset=v5ProjectAssets().find(function(entry){return entry.id===assetId});
+    return asset?{media:v5AssetMedia(asset),kind:asset.kind==='video'?'video':'image'}:null;
+  }
+  var index=tile.dataset.mediaIndex!==undefined?tile.dataset.mediaIndex:tile.dataset.slotLibrary;
+  if(index===undefined)return null;
+  var choice=DATA.media[Number(index)];
+  return choice?{media:asMedia(choice),kind:isVideoMedia(choice)?'video':'image'}:null;
+}
+
+byId('editorInner').addEventListener('dragstart',function(event){
+  var tile=event.target.closest?event.target.closest(V11_TILE_SELECTOR):null;
+  var payload=tile?v11TileMedia(tile):null;
+  if(!payload){v11Drag=null;return}
+  v11Drag=payload;
+  document.body.classList.add('is-media-dragging');
+  if(event.dataTransfer){
+    event.dataTransfer.effectAllowed='copy';
+    // Something has to be set or Firefox refuses to start the drag; the source
+    // URL is also the only sensible thing to paste anywhere else.
+    try{event.dataTransfer.setData('text/plain',payload.media.src||'')}catch(error){}
+  }
+});
+
+byId('editorInner').addEventListener('dragend',function(){
+  v11Drag=null;
+  document.body.classList.remove('is-media-dragging');
+  v11ClearDropMarks();
+});
+
+/* ---------------------------------------------------------------- *
+ * Which slot the pointer is over
+ * ---------------------------------------------------------------- */
+
+/**
+ * The slot under the pointer, and the element to mark while it is there.
+ *
+ * Card order is the reliable part: a card's index among its siblings is the index
+ * of the item it was rendered from, which is exactly where `v5FillSlots` writes.
+ * Feature slots are matched by their order among the section's own pictures,
+ * skipping the ones inside cards so the two never count each other.
+ */
+function v11SlotAt(section,root,target){
+  var slots=v5SectionSlots(section);
+  if(!slots.length||!root)return null;
+  var cards=slots.filter(function(slot){return slot.role==='card'}),
+    features=slots.filter(function(slot){return slot.role==='feature'}),
+    background=slots.filter(function(slot){return slot.role==='background'})[0]||null,
+    node=target&&target.closest?target:null;
+  var card=node&&node.closest('.dst-card');
+  if(card&&cards.length){
+    // Counted among the section's own cards, not among its parent's children:
+    // every renderer wraps a card in a single-child item element, so a sibling
+    // index is always zero.
+    var at=Array.prototype.slice.call(root.querySelectorAll('.dst-card')).indexOf(card);
+    return {slot:cards[clamp(at<0?0:at,0,cards.length-1)],mark:card};
+  }
+  var figure=node&&node.closest('figure.ph');
+  if(figure&&features.length){
+    var loose=Array.prototype.filter.call(root.querySelectorAll('figure.ph'),function(item){return !item.closest('.dst-card')});
+    var index=loose.indexOf(figure);
+    return {slot:features[clamp(index<0?0:index,0,features.length-1)],mark:figure};
+  }
+  if(background)return {slot:background,mark:root};
+  return {slot:features[0]||cards[0]||slots[0],mark:figure||root};
+}
+
+/*
+ * How a target is marked, painted inline rather than from a stylesheet.
+ *
+ * These have to win against 154 patterns, several of which outline their own
+ * cards, and against whatever the next pattern added does. An important inline
+ * declaration is the one thing in the cascade that cannot be out-argued — and
+ * because it is set on the node and removed again, none of it can reach an
+ * export or survive the drag it belongs to.
+ */
+var V11_MARK_STYLE={
+  'sbs-drop-zone':{outline:'2px dashed rgba(237,91,56,.9)','outline-offset':'-2px'},
+  'sbs-drop-hit':{outline:'3px solid #ed5b38','outline-offset':'-3px','box-shadow':'0 0 0 3px rgba(255,255,255,.65)'},
+  'sbs-drop-deny':{outline:'3px solid #b4472f','outline-offset':'-3px'}
+};
+
+var v11Marked=[];
+function v11ClearDropMarks(){
+  v11Marked.forEach(function(entry){
+    entry.node.classList.remove(entry.className);
+    Object.keys(V11_MARK_STYLE[entry.className]||{}).forEach(function(property){
+      entry.node.style.removeProperty(property);
+    });
+  });
+  v11Marked=[];
+}
+function v11Mark(node,className){
+  if(!node)return;
+  node.classList.add(className);
+  var paint=V11_MARK_STYLE[className]||{};
+  Object.keys(paint).forEach(function(property){
+    node.style.setProperty(property,paint[property],'important');
+  });
+  v11Marked.push({node:node,className:className});
+}
+
+/**
+ * Makes every module in the preview a drop target for the editor's pictures.
+ *
+ * The drag starts in the builder's document and ends in the frame's, which is
+ * one drag as far as the browser is concerned because the frame is same-origin.
+ * The payload is read from `v11Drag` rather than the DataTransfer so the module
+ * can be judged during `dragover`, when a DataTransfer is intentionally blank.
+ */
+function v11BindMediaDrop(doc){
+  if(!doc||!doc.body)return;
+
+  function moduleAt(target){
+    if(!target||!target.closest)return null;
+    var node=target.closest('section[id]');
+    var section=node?v6Section(node.id):null;
+    return section?{section:section,root:node}:null;
+  }
+
+  doc.addEventListener('dragover',function(event){
+    if(!v11Drag)return;
+    var found=moduleAt(event.target);
+    v11ClearDropMarks();
+    if(!found){if(event.dataTransfer)event.dataTransfer.dropEffect='none';return}
+    // A portrait has to be the client's own colleague. The refusal is shown on
+    // the module rather than waiting for a drop that then does nothing.
+    if(isPeopleFamily(found.section.family)){
+      event.preventDefault();
+      if(event.dataTransfer)event.dataTransfer.dropEffect='none';
+      v11Mark(found.root,'sbs-drop-deny');
+      return;
+    }
+    var hit=v11SlotAt(found.section,found.root,event.target);
+    if(!hit){if(event.dataTransfer)event.dataTransfer.dropEffect='none';return}
+    event.preventDefault();
+    if(event.dataTransfer)event.dataTransfer.dropEffect='copy';
+    v11Mark(found.root,'sbs-drop-zone');
+    if(hit.mark!==found.root)v11Mark(hit.mark,'sbs-drop-hit');
+  });
+
+  doc.addEventListener('dragleave',function(event){
+    if(!event.relatedTarget)v11ClearDropMarks();
+  });
+
+  doc.addEventListener('drop',function(event){
+    if(!v11Drag)return;
+    var found=moduleAt(event.target);
+    v11ClearDropMarks();
+    if(!found)return;
+    event.preventDefault();
+    var payload=v11Drag;
+    v11Drag=null;
+    document.body.classList.remove('is-media-dragging');
+    if(isPeopleFamily(found.section.family)){
+      announce('This module shows people, so it keeps the client’s own photographs.');
+      return;
+    }
+    var hit=v11SlotAt(found.section,found.root,event.target);
+    if(!hit||!hit.slot){announce('That module has no picture to replace.');return}
+    v6Select(found.section.id);
+    var where=hit.slot.role==='card'?'card '+(hit.slot.index+1)
+      :hit.slot.role==='background'?'the background'
+      :'visual '+(hit.slot.index+1);
+    mutate(function(){
+      v7SetSlotMedia(found.section,hit.slot,payload.media);
+    },{message:(payload.kind==='video'?'Video':'Image')+' placed on '+where+' of '+(familyLabels[found.section.family]||found.section.family)});
+  });
+}
+
+/* ---------------------------------------------------------------- *
+ * The brief, out of a file
+ *
+ * The brief the client actually wrote is a PDF or a Word document, and until now
+ * the only way in was to open it, select it and paste it. So the whole window is
+ * a drop target for one: the text is extracted here, on this machine, and handed
+ * to the same brain the textarea feeds.
+ *
+ * Where it lands depends on the builder. The simple builder wants the paragraph,
+ * because that is its whole first step. The advanced builder wants the fields, so
+ * the paragraph goes through the same splitter a simple-builder import uses, and
+ * the document itself is kept verbatim as the internal note.
+ * ---------------------------------------------------------------- */
+
+function v11BriefDropZone(){
+  return '<div class="brief-file-drop" data-brief-drop>'+
+    '<label class="brief-file-drop__pick"><input type="file" multiple accept="'+escAttr(BRIEF_DOCUMENT_ACCEPT)+'" data-brief-file>'+
+    '<b>Drop the brief document here</b>'+
+    '<span>PDF, Word (.docx), RTF or a text file &middot; or click to choose. Read on this machine &mdash; the document is never uploaded.</span>'+
+    '</label></div>';
+}
+
+var v3BrainContextBeforeV11=v3BrainContext;
+v3BrainContext=function(){
+  var context=v3BrainContextBeforeV11();
+  // One copy of the markup, used by the simple builder's brief panel and the
+  // advanced builder's own panel below.
+  context.briefDropZone=v11BriefDropZone;
+  context.briefDocumentAccept=BRIEF_DOCUMENT_ACCEPT;
+  return context;
+};
+
+var renderBriefBeforeV11=renderBrief;
+renderBrief=function(){
+  var output=renderBriefBeforeV11();
+  var panelHtml=panel('Start from the client’s own brief',
+    '<div class="panel-note">A PDF, a Word document or a text file. The words are read here in the browser, split into the fields below, and kept in full as the internal note so nothing the client wrote is lost.</div>'+
+    v11BriefDropZone(),
+    'PDF &middot; .docx &middot; .rtf &middot; text');
+  // At the top of the step: it is the thing to do before filling anything in by
+  // hand, not a footnote after having done so.
+  var anchor=output.indexOf('<section class="panel"');
+  return anchor<0?output+panelHtml:output.slice(0,anchor)+panelHtml+output.slice(anchor);
+};
+
+/** True when what is being dragged over the window is files from the desktop. */
+function v11IsFileDrag(event){
+  var transfer=event.dataTransfer;
+  if(!transfer)return false;
+  var types=transfer.types?Array.prototype.slice.call(transfer.types):[];
+  return types.indexOf('Files')>=0;
+}
+
+var v11BriefDrop=null,v11DragDepth=0;
+function v11BuildBriefDrop(){
+  if(v11BriefDrop)return v11BriefDrop;
+  var root=document.createElement('div');
+  root.className='brief-drop';
+  root.id='briefDrop';
+  root.hidden=true;
+  root.innerHTML='<div class="brief-drop__card"><b>Drop the brief here</b>'+
+    '<span>PDF, Word (.docx), RTF or a text file. It is read on this machine — nothing is uploaded.</span></div>';
+  document.body.appendChild(root);
+  v11BriefDrop=root;
+  return root;
+}
+function v11ShowBriefDrop(open){
+  var root=v11BuildBriefDrop();
+  root.hidden=!open;
+  document.body.classList.toggle('is-file-dragging',!!open);
+}
+
+window.addEventListener('dragenter',function(event){
+  if(!v11IsFileDrag(event))return;
+  event.preventDefault();
+  v11DragDepth+=1;
+  v11ShowBriefDrop(true);
+});
+window.addEventListener('dragover',function(event){
+  if(!v11IsFileDrag(event))return;
+  event.preventDefault();
+  if(event.dataTransfer)event.dataTransfer.dropEffect='copy';
+  v11ShowBriefDrop(true);
+});
+window.addEventListener('dragleave',function(event){
+  if(!v11IsFileDrag(event))return;
+  v11DragDepth=Math.max(0,v11DragDepth-1);
+  if(!v11DragDepth)v11ShowBriefDrop(false);
+});
+window.addEventListener('drop',function(event){
+  if(!v11IsFileDrag(event))return;
+  v11DragDepth=0;
+  v11ShowBriefDrop(false);
+  // The concept-JSON control in Step 01 handles its own drop and marks the event
+  // as handled; a second reading of the same file would import it twice.
+  if(event.defaultPrevented)return;
+  event.preventDefault();
+  v11ReadBriefFiles(event.dataTransfer&&event.dataTransfer.files);
+});
+
+byId('editorInner').addEventListener('change',function(event){
+  var input=event.target.closest?event.target.closest('[data-brief-file]'):null;
+  if(!input||!input.files||!input.files.length)return;
+  // Copied before the input is cleared: emptying the value empties the FileList
+  // with it, and the read is asynchronous.
+  var files=Array.prototype.slice.call(input.files);
+  input.value='';
+  v11ReadBriefFiles(files);
+});
+
+/** A concept export dropped on the window is still an import, not a brief. */
+async function v11IsConceptJson(file){
+  if(!file||!/\.json$/i.test(file.name||''))return false;
+  try{
+    var payload=safeJson(await file.text());
+    return !!(payload&&payload.concept&&payload.concept.page);
+  }catch(error){return false}
+}
+
+function v11SkippedMessage(skipped){
+  var first=skipped[0];
+  return skipped.length===1
+    ? first.name+' could not be read: '+first.reason+'.'
+    : skipped.length+' files could not be read. The first: '+first.name+' — '+first.reason+'.';
+}
+
+async function v11ReadBriefFiles(files){
+  var list=Array.prototype.slice.call(files||[]);
+  if(!list.length)return;
+  if(list.length===1&&await v11IsConceptJson(list[0])){v4ImportConcept(list[0]);return}
+  announce(list.length===1?'Reading '+list[0].name+'…':'Reading '+list.length+' documents…');
+  var simple=v4IsSimple();
+  var existing=simple?String(v4EnsureSimple(state.project).briefText||''):'';
+  var result;
+  try{
+    result=await readBriefDocuments(list,{existing:existing});
+  }catch(error){
+    announce('Those files could not be read.');
+    return;
+  }
+  if(!result.read.length){announce(v11SkippedMessage(result.skipped.length?result.skipped:[{name:'That file',reason:'it held no text'}]));return}
+  var names=result.read.map(function(entry){return entry.name}).join(', ');
+  var tail=(result.skipped.length?' '+v11SkippedMessage(result.skipped):'')+
+    (result.truncated?' It was longer than '+BRIEF_TEXT_LIMIT.toLocaleString()+' characters, so the end was trimmed.':'');
+
+  if(simple){
+    v4EnsureSimple(state.project).briefText=result.text;
+    queueSave();
+    goStep(0);
+    announce(names+' read into the brief — '+result.characters.toLocaleString()+' characters. Read it to build the three concepts.'+tail);
+    return;
+  }
+
+  // The advanced builder is unusable without the individual fields, so the
+  // paragraph goes through the same splitter the concept import uses.
+  var expanded=typeof briefBrainFeature.expandBriefForImport==='function'
+    ? await briefBrainFeature.expandBriefForImport(result.text)
+    : null;
+  var split=!!(expanded&&!expanded.error);
+  mutate(function(){
+    if(split)v4ApplyBriefFields(expanded,{briefText:result.text,replaceNotes:true});
+    else state.project.brief.notes=result.text;
+  },{message:''});
+  goStep(0);
+  announce(split
+    ? names+' read and split into the brief fields — check them before continuing.'+tail
+    : names+' read into the internal notes. The field split needs the brief server, so fill the fields in yourself.'+tail);
+}
+
+var v6BindPreviewBeforeV11=v6BindPreview;
+v6BindPreview=function(){
+  var frame=byId('sitePreview'),doc=null;
+  try{doc=frame&&frame.contentDocument}catch(error){return}
+  // The original binds once per document and records which one; only a document
+  // it has just adopted needs the drop listeners too.
+  var fresh=!!doc&&doc!==v6BoundDoc;
+  v6BindPreviewBeforeV11();
+  if(fresh&&doc===v6BoundDoc)v11BindMediaDrop(doc);
+};
+
+v2EnsureProject(state.project);state.project.sections.forEach(function(s){ensureSectionSettings(s);syncSectionNode(s)});window.__SBS_TEST_API={version:SBS_BUILDER_VERSION,previewSwitcher:{step:v6Step,pool:v6PatternPool,hoverId:function(){return v6HoverId},show:v6Show,hide:v6Hide,geometry:v6Geometry},patternChoice:function(family,index){return v8RankPatterns(family,{index:index||0}).slice(0,8).map(function(entry){return {id:entry.pattern.id,score:entry.score,why:entry.why}})},pickPattern:function(family,index){return (v8PickPattern(family,index||0)||{}).id||''},briefDirectives:function(){return briefDirectives(state.project.brief)},ensureProject:v2EnsureProject,buildTheme:function(p,options){return buildTheme(p||state.project,options||{})},buildSiteDocument:function(p,options){return buildSiteDocument(p||state.project,options||{})},buildPageExport:function(p){return buildPageExport(p||state.project)},buildNavigationExport:function(p){return buildNavigationExport(p||state.project)},buildFooterExport:function(p){return buildFooterExport(p||state.project)},buildGlobalsExport:function(p){return buildGlobalsExport(p||state.project)},buildCompleteExport:function(p){return buildExport(p||state.project)},auditDocument:v2AuditDocument,createSection:createSection,patternIds:DATA.patterns.map(function(p){return p.id}),patterns:DATA.patterns.map(function(p){return {id:p.id,family:p.family}}),flowIds:FLOW_CATALOG.map(function(f){return f.id}),flowCatalog:FLOW_CATALOG,allFlows:function(p){return allFlows(p||state.project)},design:{ensure:v3EnsureDesign,dialTokens:function(p){return dialTokens((p||state.project).design)},dialLevels:function(p){return dialLevels((p||state.project).design)},dialCss:function(p){return dialCss((p||state.project).design)},buttonStyleCss:buttonStyleCss,presets:DIAL_PRESETS,dialKeys:DIAL_KEYS,buttonStyles:BUTTON_STYLES},brain:{applyContentDraft:v3ApplyContentDraft,applyCustomFlow:v3ApplyCustomFlow,sectionFamilies:SECTION_FAMILIES},documents:{accept:BRIEF_DOCUMENT_ACCEPT,kind:briefDocumentKind,supported:isBriefDocument,read:readBriefDocument,readAll:readBriefDocuments,apply:v11ReadBriefFiles},media:{sectionSlots:v5SectionSlots,slots:function(){return v5MediaSlots(state.project)},fillSlots:v5FillSlots,applyPlan:v5ApplyMediaPlan,clearPlan:v5ClearMediaPlan,assetMedia:v5AssetMedia,slotAt:v11SlotAt,markTiles:v11MarkMediaTiles,dragging:function(){return v11Drag}},simple:{mode:v4Mode,setMode:v4SetMode,steps:v4Steps,ensure:function(){return v4EnsureSimple(state.project)},applyConcept:v4ApplyConcept,normalizeConcepts:v4NormalizeConcepts,buildConceptExport:function(p){return v4BuildConceptExport(p||state.project)},importConcept:v4ImportConcept,canLeaveBrief:v4CanLeaveSimpleBrief},styles:{
   families:function(){return STYLE_FAMILIES},
   all:function(){return allStyles()},
   production:function(){return productionStyles()},

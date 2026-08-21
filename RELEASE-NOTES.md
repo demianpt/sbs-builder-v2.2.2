@@ -1,5 +1,150 @@
 # Release notes
 
+## 2.6.0 — The brief arrives as a file, and the pictures arrive by hand
+
+### The client's own brief, dropped straight in
+
+The brief that actually exists is a PDF the client exported or a Word document
+from a discovery call, and the only way in was to open it somewhere else, select
+all, and paste. Now the whole window takes a file: drag one anywhere over the
+builder and a sheet appears; drop it and the words are read.
+
+Every format is read **in the browser** with no dependency and no upload — a
+`.docx` is a ZIP of XML and a PDF's text lives in deflated content streams, and
+the platform already ships the one primitive both need. The client's document
+therefore never leaves the machine, which for a brief under NDA is the difference
+between usable and not.
+
+- **`.docx`** — the ZIP central directory, then `word/document.xml` (plus foot and
+  end notes), with paragraphs, tabs and breaks kept.
+- **`.rtf`, `.txt`, `.md`, `.csv`, `.json`, `.html`** — markup stripped to prose.
+- **PDF** — see below; it turned out to be the whole job.
+
+#### A PDF does not contain text
+
+The first version of this read the bytes of every content stream, which works on
+a PDF written by hand and fails on every PDF anybody actually has. A real Word or
+Pages export uses two kinds of font at once: body copy in a `WinAnsiEncoding`
+TrueType font, where a byte is nearly a character, and everything the exporter
+subset — headings, links, bullets — in a `Type0`/`Identity-H` font, where a
+*pair* of bytes is a glyph number with no relationship to any alphabet. Read
+straight through, half the document comes back as noise, which is
+indistinguishable from a scan. That is exactly what a real ten-page meeting-notes
+PDF did: "probably a scan", with 12,000 characters of readable brief inside it.
+
+So `shared/brief/pdf.mjs` now does what a reader does:
+
+- finds the indirect objects, **including the ones packed inside a compressed
+  object stream** — which is where every exporter since PDF 1.5 puts its page and
+  font dictionaries, so a reader that only scans the file body finds no pages at
+  all;
+- walks the page tree, so pages come out in reading order rather than file order;
+- resolves each page's fonts and each font's **`/ToUnicode` CMap** — the table the
+  exporter shipped precisely so the text could be got back — handling single
+  codes, listed runs, spanned runs and multi-character destinations;
+- interprets the content stream tracking the selected font, and decodes every
+  shown string through it;
+- follows the pen, because Word places every *run* of a sentence separately: one
+  for the bold part, one for the link, one for the superscript. Treating each
+  placement as a new line returns a document one or two words per line. A move
+  that changes the vertical position is a line; a move along the same line is a
+  space — and only if the gap is wider than the estimated advance of what was
+  just drawn, or every hyphenated word arrives as "multi - language".
+
+Word gaps still come out of the kerning as well, because a PDF stores no spaces:
+a `TJ` adjustment past a third of an em is where a typesetter put one.
+
+Deliberately absent: encryption, CFF charset reconstruction, and any attempt to
+invent text for a font with no `/ToUnicode` at all. Those are reported as
+unreadable with the reason, which is more use than a page of glyph numbers.
+
+#### The brief the model reads is no longer four thousand characters
+
+Reading the document was only half of it. `briefText` was capped at 4,000
+characters end to end — textarea, request, server — so a 12,000-character
+discovery document arrived and immediately lost its last two thirds. In a
+discovery document that is the audience, the scope, the budget and the page list:
+everything worth reading. The trim was reported honestly and was still useless.
+
+The cap is now **16,000 characters** — about four thousand tokens, a full
+discovery document, and a small fraction of the model's context — stated once in
+`shared/brief/schemas.mjs` and taken from there by the browser, the server, the
+textarea's own limit and the file reader. The internal note that keeps the
+document verbatim went from 2,000 to 6,000.
+
+Measured against the real thing: a ten-page client PDF now reads whole, and the
+concepts the brain returns cite the target audience from page 2 and the "Book a
+ride" call to action from page 7 — neither of which it could previously see.
+
+What it cannot read is named rather than hidden. A scanned PDF is a picture of
+text with no text in it, and it says so — "probably a scan… copy the text out and
+paste it instead" — instead of filling the brief with glyph soup, which is decided
+by measuring how much of the extraction is actually letters. A `.doc` from an old
+Word version is refused by name with the fix ("save it as .docx or PDF first"). A
+drop of four files where one is a scan places the other three and reports the
+fourth.
+
+Where it lands is the difference between the two builders. The **simple builder**
+gets the paragraph, appended under anything already written, each file under its
+own name so a discovery deck and a tone-of-voice note do not run together. The
+**advanced builder** gets the fields: the text goes through the same splitter a
+simple-builder import uses, and the document is kept verbatim as the internal
+note. If the brief server is not reachable the words are still kept, and the toast
+says the split is what was missing rather than pretending it worked.
+
+The same drop still recognises a concept export and imports it as a concept.
+
+### A picture, dragged onto the module it is for
+
+The imagery was in the editor and the page was in the preview. Getting one into
+the other meant selecting the module, opening its Media tab, finding the slot in a
+list and clicking a tile — three decisions to express one: *this* picture,
+*there*.
+
+Every tile is now draggable — the found-imagery gallery, the module picker and the
+placeholder library — and every module in the preview is a target. Which slot it
+lands in is read from what the pointer is actually over: a card takes that card's
+picture, a split takes that half's, a band with no picture under the pointer takes
+its background. The slot list is the same one the stock-imagery job fills, so a
+slot that can be dropped on is a slot the pattern really renders. The module is
+outlined and the exact slot is ringed while the pointer is over them, one drop is
+one undo, and the module dropped on becomes the selected one so the editor follows.
+
+A module of people refuses the drop and says why: a testimonial face has to be the
+client's own colleague, not a stock model, and that rule now shows itself at the
+moment somebody tries.
+
+### The navigation's own controls stay put
+
+The controls moved out of the navigation in 2.5.0, into a strip below it — and
+became unusable. The strip is drawn over whatever module follows the header, so
+reaching a button meant crossing those pixels, one `mousemove` retargeted the
+overlay to the hero, and the arrows were gone before the pointer arrived. The
+navigation could be looked at and never changed.
+
+The band the strip occupies now reads as part of the header for as long as the
+header is what is being described, and releases the moment the pointer is past it,
+so the module below is still selectable. On a phone shell the strip keeps the
+arrows and the actions and drops the label, which had nowhere to go in 390px.
+
+### "Edit module" lands on the module editor
+
+The button changed step and left the editor at the top of it — which in the
+modules step is the brief reader, then the imagery panel, then the page sequence,
+with the module editor below the fold and nothing to say the page had moved. It
+now travels there: an animated scroll unless motion is switched off, and the panel
+marked for a moment on arrival.
+
+### A programmatic edit no longer loses to its own stale markup
+
+Found while the document drop kept coming out empty, and it was not the document
+reader. Replacing the editor's markup blurs whatever was focused, a blur on an
+edited field is answered with a `change`, and that `change` carries the value the
+field held **before** the render. To every handler on the editor that is
+indistinguishable from typing — so any programmatic edit that caused a render was
+overwritten by its own stale markup a moment later. Nothing that happens during
+the swap is a person editing, so nothing during the swap is delivered.
+
 ## 2.5.0 — The global parts, and the panels that were too long
 
 ### The navigation and the footer step like a module

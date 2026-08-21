@@ -288,6 +288,42 @@ Configuration lives in `.env` (see `.env.example`). The API key is server-side
 only and never reaches the browser; `publicConfig()` in `server/config.mjs` is
 the entire browser-facing surface.
 
+### A brief that arrives as a file
+
+Drag a PDF, a Word `.docx`, an `.rtf` or any text file anywhere over the builder
+and drop it: the words are read and become the brief. Both builders take one — the
+simple builder puts the paragraph in its brief box, the advanced builder runs it
+through the **Split** job above and keeps the document verbatim as the internal
+note.
+
+Every format is read in the browser with no dependency and no upload — a `.docx`
+is a ZIP of XML and a PDF's text lives in deflated content streams, so
+`DecompressionStream` is the whole toolchain. The client's document never leaves
+the machine.
+
+A PDF is the hard one, and `shared/brief/pdf.mjs` treats it as such: a PDF stores
+instructions to draw glyphs, and what a byte means depends on the font in force —
+which in a real Word export is a `WinAnsiEncoding` font for the body and an
+`Identity-H` subset for every heading and link, where a pair of bytes is a glyph
+number. So it finds the objects (including those packed inside compressed object
+streams, where modern exporters keep their fonts), walks the page tree, resolves
+each font's `/ToUnicode` table, and follows the pen so a sentence Word split into
+six placements comes back as one line.
+
+What it cannot read, it names. A scanned PDF has no text in it and says so rather
+than filling the brief with glyph codes; a legacy `.doc` is refused with the fix.
+A drop of several files places the ones it could read, each under its own name, and
+reports the rest.
+
+The brief the model reads is capped at **16,000 characters** — one number in
+`shared/brief/schemas.mjs`, used by the textarea, the requests and the server —
+which is a whole discovery document rather than its first two pages.
+
+Held by `tests/unit/brief-pdf.test.mjs` and `tests/unit/brief-documents.test.mjs`,
+which build real PDF and ZIP containers to read back, and
+`tests/browser/brief-documents.spec.mjs`, which prints a PDF with the browser's
+own engine and drops it into the builder.
+
 ## Design system controls
 
 **Step 02** owns the whole visual system:
@@ -345,6 +381,18 @@ list of families — a pattern that paints its own wash keeps it exactly, a colo
 pattern carries but never paints does not count as one, and a default wash follows
 the brand when the palette moves while an edited one is never touched again. Held
 by `tests/browser/photo-scrim.spec.mjs`, which audits all 154 patterns.
+
+### A picture, dragged onto the module
+
+Every picture tile in the editor — the found-imagery gallery, the module's own
+picker, the placeholder library — can be dragged onto any module in the preview.
+The slot is read from what the pointer is over: a card takes that card's picture, a
+split takes that half's, a band with no picture under the pointer takes its
+background. It is the same slot list the stock-imagery job fills, so a slot that
+can be dropped on is a slot the pattern really renders. The module is outlined and
+the exact slot ringed while the pointer is over them; one drop is one undo; a
+module of people refuses the drop and says why. Held by
+`tests/browser/media-drop.spec.mjs`.
 
 ## Tests
 

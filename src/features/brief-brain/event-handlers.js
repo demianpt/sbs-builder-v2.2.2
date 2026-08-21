@@ -1,23 +1,7 @@
 import { SECTION_FAMILY_IDS, sectionFamily } from '../../../shared/brief/families.mjs';
 import { outlineFamilies } from '../../../shared/brief/planner.mjs';
 import { briefBrainApi, normalizeApiError } from './api.js';
-import {
-  briefSignature,
-  buildConceptsRequest,
-  buildContentRequest,
-  buildExpandRequest,
-  buildMediaRequest,
-  buildOutlineRequest,
-  buildUnderstandRequest,
-  beginJob,
-  endJob,
-  ensureBrainState,
-  ensureMediaState,
-  ensureSimpleState,
-  isBrainBusy,
-  isMediaBusy,
-  isSimpleBusy,
-} from './state.js';
+import { BRIEF_TEXT_LIMIT, beginJob, briefSignature, buildConceptsRequest, buildContentRequest, buildExpandRequest, buildMediaRequest, buildOutlineRequest, buildUnderstandRequest, endJob, ensureBrainState, ensureMediaState, ensureSimpleState, isBrainBusy, isMediaBusy, isSimpleBusy } from './state.js';
 
 /**
  * The Brief Brain's event layer.
@@ -400,7 +384,7 @@ export function handleBriefBrainEvent(event, context = {}) {
         else trigger.removeAttribute('aria-disabled');
       }
       const counter = document.querySelector('.brief-checklist em');
-      if (counter) counter.textContent = `${String(simple.briefText || '').trim().length} / 4000 characters`;
+      if (counter) counter.textContent = `${String(simple.briefText || '').trim().length.toLocaleString()} / ${BRIEF_TEXT_LIMIT.toLocaleString()} characters`;
       return true;
     }
     if (field) {
