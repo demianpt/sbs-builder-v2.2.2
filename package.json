@@ -30,7 +30,8 @@
     "clean:patterns": "node scripts/clean-patterns.mjs",
     "build:plugin": "node scripts/build-plugin.mjs",
     "sync:registry": "node scripts/sync-dst-registry.mjs",
-    "verify:export": "npm run record:wordpress && node scripts/verify-against-theme.mjs"
+    "verify:export": "npm run record:wordpress && node scripts/verify-against-theme.mjs",
+    "build:deck": "node scripts/build-deck.mjs"
   },
   "dependencies": {
     "dotenv": "^16.6.1",

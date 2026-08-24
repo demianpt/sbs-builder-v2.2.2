@@ -13,6 +13,37 @@ block manifests and two template parts, and those are the authority: which block
 exist, which attributes each one has, which of those the WordPress editor shows,
 and exactly how a header and a footer are built.
 
+### Documentation: a deck the team can actually read
+
+`docs/SBS-Simple-Builder.pdf` — 18 slides, landscape 16:9, one slide per page —
+walks the engineering team through the simple builder: the four steps, the one
+button and its four stages, the architecture, the AI layer, the pattern library,
+concept isolation, the preview's in-place repaint, the crossing into WordPress,
+the stack, and what verifies it.
+
+Five diagrams are hand-authored inline SVG rather than pasted images, so they stay
+crisp at any zoom and in print and they theme with the page. Each one draws a
+mechanism rather than naming it: the preview slide is a before/after of the same
+four steps, because the difference *is* the claim.
+
+The source is a normal web page whose slide box is its printed page
+(`@page { size: 1280px 720px }`), so `npm run build:deck` produces the deck at
+16:9 rather than a document reflowed onto A4 with slides split across boundaries.
+Playwright prints it with `preferCSSPageSize` after waiting on
+`document.fonts.ready` — a PDF printed before the webfonts arrive is set in the
+fallback stack, same layout, wrong voice.
+
+Two things the build caught that a glance would not have. A responsive rule was
+written `@media (max-width:1360px)` and therefore matched under *print* as well,
+putting 54px of padding back after the print block had removed it — two extra
+blank pages in an eighteen-slide PDF, which is why the build verifies the page
+count and the MediaBox rather than trusting them. And an overflow check that read
+`scrollHeight` found nothing, because the slide clips: measuring each child's
+bottom against the slide's padding box found four real spills.
+
+Every number in the deck was read out of the code and the data at v2.9.0 rather
+than remembered.
+
 ### The registry is generated from the theme
 
 `npm run sync:registry` reads `build/blocks/**/block.json` and rebuilds the
