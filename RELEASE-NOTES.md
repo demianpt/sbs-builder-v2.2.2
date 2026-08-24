@@ -1,5 +1,86 @@
 # Release notes
 
+## 2.7.2 — Editing a module never moves the preview
+
+### Every property, not only a dropped picture
+
+2.7.1 stopped the preview jumping when a picture landed on a band. It jumped for
+everything else: pick "Space above: Normal" on a band halfway down the page and
+the page left, came back and re-animated, with the band you were spacing
+somewhere inside that journey.
+
+The cause was the same one, and the cure was already written. Every control in
+the module editor called `queuePreview`, which rebuilds the whole document, and a
+rebuilt `srcdoc` opens at scroll 0 before the restore walks it down. Nothing
+about the in-place repaint was specific to a picture: a background, a content
+width, an arrival effect, an overlay, a headline, a card's copy, an item added to
+a list — each changes exactly one module, and `siteCss` is derived from the
+design dials rather than from any section, so no document-level rule goes stale
+when one band is replaced.
+
+The new `v12` layer sits at the end of the IIFE, where it can reassign the
+outermost `updateBinding` wrapper, and covers three routes:
+
+  * `updateBinding` itself, for every `setting.` / `effect.` / `decoration.` /
+    `section.` / `fidelity.` path — which is every select, slider and colour
+    control in both the Basic and the Extended view, plus the fidelity overlay
+    and colour composites that call `updateBinding` from a click.
+  * A bubble-phase `input`/`change` listener on `document`, for the fields that
+    never reach `updateBinding` — a headline, a card's copy, a list of bullet
+    points, a slot's own media fields. Bubble on `document` is the first point at
+    which every `#editorInner` listener has run and the change has actually been
+    applied; a field that also went through `updateBinding` is queued twice and
+    painted once, because the queue is keyed by module id.
+  * A capture-phase `click` listener for the repeater controls. Adding or
+    removing an item goes through `mutate`, which re-renders the editor pane — so
+    by the time a bubble listener ran, the button clicked has been detached and
+    can no longer be asked which panel it was in. The module is recorded in
+    capture, before the pane is rebuilt, and painted on the next frame: well
+    inside the 110ms the rebuild is waiting on.
+
+Two properties this layer had to get right. The queued rebuild is cancelled when
+the change lands rather than when the repaint runs, because a rebuild firing in
+between would move the page anyway. And a dragged slider fires `input` per pixel,
+so repaints are coalesced to one per frame — the debounce the rebuild used to
+provide. A change the frame genuinely cannot absorb still rebuilds: a torn-down
+frame, a module no longer in the document, or a design dial, which rewrites the
+document stylesheet and is not one module.
+
+`__SBS_TEST_API.paint` exposes `painted()` and `rebuilt()`. A repaint that
+silently degraded into a rebuild is the failure mode this layer exists to
+prevent, and a test asserting only "the change landed" cannot tell the two apart.
+
+### One old test asserted the bug
+
+`preview-scroll.spec.mjs` waited for the frame's load count to *grow* and then
+checked the scroll had been restored. That was the best guarantee available while
+every change rebuilt the document — and it is also a description of what people
+were complaining about. It now asserts the stronger thing: no reload at all, and
+a scroll position identical to the pixel.
+
+Its baseline needed one more piece of care. A programmatic scroll clamped because
+the document had not finished growing is restored by the browser as the page gets
+taller, so the baseline is the first reading that holds still — otherwise the
+assertion blames this change for the browser's own catch-up.
+
+### Coverage
+
+`tests/browser/module-properties.spec.mjs` (10) covers space above, space below,
+the light/dark flip, the content measure, the arrival effect, a decorative motif,
+a fifteen-event slider drag, a typed headline, an added repeater item, and the
+design dial that must *still* rebuild. `simple-builder.spec.mjs` gains the same
+assertion in the builder most people actually stand in.
+
+### One more instance of a known flake
+
+`button-styles.spec.mjs:71` still confirmed a change had landed and then measured
+geometry in a *second* round trip — the shape `measureWhen` was introduced for in
+2.7.1, applied to its neighbour at line 93 but not to this one. It now measures
+in the reading that satisfies the wait. `previewButton` also no longer throws
+when the frame is caught between documents: reporting a null reading lets the
+caller keep polling, where throwing failed the test on a page that was correct
+before and after the moment it was read.
+
 ## 2.7.1 — The preview stays where you are
 
 ### A dropped picture no longer throws the page to the top

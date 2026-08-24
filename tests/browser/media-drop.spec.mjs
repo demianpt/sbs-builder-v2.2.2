@@ -23,6 +23,10 @@ async function openModules(page) {
 
 /** Selects a section by a predicate over its slots, and opens its Media tab. */
 async function selectSection(page, kind) {
+  // Re-checked rather than assumed. Under a loaded dev server the app has been
+  // seen to boot late enough that a helper reading the API straight away gets
+  // `undefined`, which reads as a product failure and is not one.
+  await page.waitForFunction(() => Boolean(window.__SBS_TEST_API));
   const id = await page.evaluate((wanted) => {
     const api = window.__SBS_TEST_API;
     const match = api.state.project.sections.find((section) => {

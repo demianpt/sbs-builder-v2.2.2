@@ -729,7 +729,7 @@ setTimeout(updateDevice,100);
 (function(){
 'use strict';
 
-var SBS_BUILDER_VERSION='2.7.1';
+var SBS_BUILDER_VERSION='2.7.2';
 var legacySiteCssV1=siteCss;
 var legacyApplyArchetypeV1=applyArchetype;
 var legacyValidateProjectV1=validateProject;
@@ -6704,7 +6704,117 @@ v6BindPreview=function(){
   if(fresh&&doc===v6BoundDoc)v11BindMediaDrop(doc);
 };
 
-v2EnsureProject(state.project);state.project.sections.forEach(function(s){ensureSectionSettings(s);syncSectionNode(s)});window.__SBS_TEST_API={version:SBS_BUILDER_VERSION,previewSwitcher:{step:v6Step,pool:v6PatternPool,hoverId:function(){return v6HoverId},show:v6Show,hide:v6Hide,geometry:v6Geometry},patternChoice:function(family,index){return v8RankPatterns(family,{index:index||0}).slice(0,8).map(function(entry){return {id:entry.pattern.id,score:entry.score,why:entry.why}})},pickPattern:function(family,index){return (v8PickPattern(family,index||0)||{}).id||''},briefDirectives:function(){return briefDirectives(state.project.brief)},ensureProject:v2EnsureProject,buildTheme:function(p,options){return buildTheme(p||state.project,options||{})},buildSiteDocument:function(p,options){return buildSiteDocument(p||state.project,options||{})},buildPageExport:function(p){return buildPageExport(p||state.project)},buildNavigationExport:function(p){return buildNavigationExport(p||state.project)},buildFooterExport:function(p){return buildFooterExport(p||state.project)},buildGlobalsExport:function(p){return buildGlobalsExport(p||state.project)},buildCompleteExport:function(p){return buildExport(p||state.project)},auditDocument:v2AuditDocument,createSection:createSection,patternIds:DATA.patterns.map(function(p){return p.id}),patterns:DATA.patterns.map(function(p){return {id:p.id,family:p.family}}),flowIds:FLOW_CATALOG.map(function(f){return f.id}),flowCatalog:FLOW_CATALOG,allFlows:function(p){return allFlows(p||state.project)},design:{ensure:v3EnsureDesign,dialTokens:function(p){return dialTokens((p||state.project).design)},dialLevels:function(p){return dialLevels((p||state.project).design)},dialCss:function(p){return dialCss((p||state.project).design)},buttonStyleCss:buttonStyleCss,presets:DIAL_PRESETS,dialKeys:DIAL_KEYS,buttonStyles:BUTTON_STYLES},brain:{applyContentDraft:v3ApplyContentDraft,applyCustomFlow:v3ApplyCustomFlow,sectionFamilies:SECTION_FAMILIES},documents:{accept:BRIEF_DOCUMENT_ACCEPT,kind:briefDocumentKind,supported:isBriefDocument,read:readBriefDocument,readAll:readBriefDocuments,apply:v11ReadBriefFiles},media:{sectionSlots:v5SectionSlots,slots:function(){return v5MediaSlots(state.project)},fillSlots:v5FillSlots,applyPlan:v5ApplyMediaPlan,clearPlan:v5ClearMediaPlan,assetMedia:v5AssetMedia,slotAt:v11SlotAt,markTiles:v11MarkMediaTiles,dragging:function(){return v11Drag}},simple:{mode:v4Mode,setMode:v4SetMode,steps:v4Steps,ensure:function(){return v4EnsureSimple(state.project)},applyConcept:v4ApplyConcept,normalizeConcepts:v4NormalizeConcepts,buildConceptExport:function(p){return v4BuildConceptExport(p||state.project)},importConcept:v4ImportConcept,canLeaveBrief:v4CanLeaveSimpleBrief},styles:{
+/* ================================================================== *
+ * v12 — Editing a module never moves the preview
+ *
+ * Every property in the module editor queued a full rebuild, and a rebuilt
+ * `srcdoc` is a new document: it opens at scroll 0 and the restore then walks
+ * it back down. Somebody who has just chosen "Space above: Normal" is looking
+ * at the band they are spacing, and what they get is the page leaving and
+ * gliding back, with the band they were watching now somewhere else.
+ *
+ * The media drop already had this fixed by swapping the one changed module in
+ * place, and nothing about that is specific to a picture. A background, a
+ * content width, an arrival effect, an overlay, a headline, a card's copy, an
+ * item added to a list — each changes exactly one module, and `siteCss` is
+ * derived from the design dials rather than from any section, so no
+ * document-level rule goes stale when one band is replaced.
+ *
+ * Two things this layer has to get right:
+ *
+ *   1. The queued rebuild is cancelled when the change lands, not when the
+ *      repaint runs. A rebuild firing in between would move the page anyway.
+ *   2. A dragged slider fires `input` per pixel. Repainting per pixel would
+ *      render one module a hundred times for a single gesture, so repaints are
+ *      coalesced to one per frame — the debounce the rebuild used to provide.
+ * ================================================================== */
+
+/** The module a bound path addresses, or null when the path addresses none. */
+function v12PathSection(path){
+  var match=/^(?:setting|effect|decoration|section|fidelity)\.([^.]+)\./.exec(String(path||''));
+  return match?v6Section(match[1]):null;
+}
+
+var v12PaintFrame=0,v12PaintIds={};
+// Counted, not just done: a repaint that silently degraded into a rebuild is
+// the failure mode this layer exists to prevent, and a test asserting only
+// "the change landed" cannot tell the two apart.
+var v12Painted=0,v12Rebuilt=0;
+
+/**
+ * Repaints modules in place instead of rebuilding, at most once per frame.
+ *
+ * A module that cannot be patched — a torn-down frame, a module no longer in
+ * the document — falls back to the rebuild, the one case where moving the page
+ * beats showing a stale one.
+ */
+function v12QueuePaint(section){
+  if(!section)return;
+  v12PaintIds[section.id]=true;
+  clearTimeout(previewTimer);
+  previewTimer=null;
+  if(v12PaintFrame)return;
+  v12PaintFrame=requestAnimationFrame(function(){
+    v12PaintFrame=0;
+    var ids=Object.keys(v12PaintIds),missed=false;
+    v12PaintIds={};
+    ids.forEach(function(id){
+      var target=v6Section(id);
+      if(!target)return;
+      if(v11PaintInPlace(target))v12Painted+=1;else missed=true;
+    });
+    if(missed){v12Rebuilt+=1;queuePreview()}
+  });
+}
+
+var updateBindingBeforeV12=updateBinding;
+updateBinding=function(path,value,input){
+  // Resolved before the call, because a layer below may null the slice the path
+  // points into — clearing a decorative motif drops `section.decoration`.
+  var section=v12PathSection(path),result=updateBindingBeforeV12(path,value,input);
+  if(section)v12QueuePaint(section);
+  return result;
+};
+
+/*
+ * The fields that never reach `updateBinding` — a headline, a card's copy, a
+ * list of bullet points, a slot's own media fields — are read straight off the
+ * event by the listeners that own them. All of them live inside the module
+ * editor, and everything inside the module editor belongs to the selected
+ * module, so one listener covers the lot.
+ *
+ * Bubble phase on `document`, which is after every `#editorInner` listener has
+ * run: the only point at which the change has actually been applied. A field
+ * that also went through `updateBinding` is queued twice and painted once —
+ * the queue is keyed by module id.
+ */
+function v12EditorPaint(event){
+  var target=event.target;
+  if(!target||!target.closest||!target.closest('#editorInner [data-module-editor]'))return;
+  v12QueuePaint(currentSection());
+}
+document.addEventListener('input',v12EditorPaint);
+document.addEventListener('change',v12EditorPaint);
+
+/*
+ * Adding or removing a repeated item goes through `mutate`, which re-renders
+ * the editor pane — so by the time a bubble listener ran, the button that was
+ * clicked has been detached from the document and can no longer be asked which
+ * panel it was in. The module is therefore recorded in the capture phase,
+ * before the pane is rebuilt, and painted on the next frame: well inside the
+ * 110ms the rebuild is waiting on.
+ */
+var V12_ITEM_CONTROLS='[data-add-item],[data-remove-item],[data-add-button],[data-remove-button]';
+document.addEventListener('click',function(event){
+  var target=event.target;
+  if(!target||!target.closest)return;
+  if(!target.closest(V12_ITEM_CONTROLS)||!target.closest('#editorInner [data-module-editor]'))return;
+  var section=currentSection();
+  if(!section)return;
+  requestAnimationFrame(function(){v12QueuePaint(v6Section(section.id))});
+},true);
+
+v2EnsureProject(state.project);state.project.sections.forEach(function(s){ensureSectionSettings(s);syncSectionNode(s)});window.__SBS_TEST_API={version:SBS_BUILDER_VERSION,previewSwitcher:{step:v6Step,pool:v6PatternPool,hoverId:function(){return v6HoverId},show:v6Show,hide:v6Hide,geometry:v6Geometry},patternChoice:function(family,index){return v8RankPatterns(family,{index:index||0}).slice(0,8).map(function(entry){return {id:entry.pattern.id,score:entry.score,why:entry.why}})},pickPattern:function(family,index){return (v8PickPattern(family,index||0)||{}).id||''},briefDirectives:function(){return briefDirectives(state.project.brief)},ensureProject:v2EnsureProject,buildTheme:function(p,options){return buildTheme(p||state.project,options||{})},buildSiteDocument:function(p,options){return buildSiteDocument(p||state.project,options||{})},buildPageExport:function(p){return buildPageExport(p||state.project)},buildNavigationExport:function(p){return buildNavigationExport(p||state.project)},buildFooterExport:function(p){return buildFooterExport(p||state.project)},buildGlobalsExport:function(p){return buildGlobalsExport(p||state.project)},buildCompleteExport:function(p){return buildExport(p||state.project)},auditDocument:v2AuditDocument,createSection:createSection,patternIds:DATA.patterns.map(function(p){return p.id}),patterns:DATA.patterns.map(function(p){return {id:p.id,family:p.family}}),flowIds:FLOW_CATALOG.map(function(f){return f.id}),flowCatalog:FLOW_CATALOG,allFlows:function(p){return allFlows(p||state.project)},design:{ensure:v3EnsureDesign,dialTokens:function(p){return dialTokens((p||state.project).design)},dialLevels:function(p){return dialLevels((p||state.project).design)},dialCss:function(p){return dialCss((p||state.project).design)},buttonStyleCss:buttonStyleCss,presets:DIAL_PRESETS,dialKeys:DIAL_KEYS,buttonStyles:BUTTON_STYLES},brain:{applyContentDraft:v3ApplyContentDraft,applyCustomFlow:v3ApplyCustomFlow,sectionFamilies:SECTION_FAMILIES},documents:{accept:BRIEF_DOCUMENT_ACCEPT,kind:briefDocumentKind,supported:isBriefDocument,read:readBriefDocument,readAll:readBriefDocuments,apply:v11ReadBriefFiles},paint:{painted:function(){return v12Painted},rebuilt:function(){return v12Rebuilt},queue:v12QueuePaint,section:v6RepaintSection},media:{sectionSlots:v5SectionSlots,slots:function(){return v5MediaSlots(state.project)},fillSlots:v5FillSlots,applyPlan:v5ApplyMediaPlan,clearPlan:v5ClearMediaPlan,assetMedia:v5AssetMedia,slotAt:v11SlotAt,markTiles:v11MarkMediaTiles,dragging:function(){return v11Drag}},simple:{mode:v4Mode,setMode:v4SetMode,steps:v4Steps,ensure:function(){return v4EnsureSimple(state.project)},applyConcept:v4ApplyConcept,normalizeConcepts:v4NormalizeConcepts,buildConceptExport:function(p){return v4BuildConceptExport(p||state.project)},importConcept:v4ImportConcept,canLeaveBrief:v4CanLeaveSimpleBrief},styles:{
   families:function(){return STYLE_FAMILIES},
   all:function(){return allStyles()},
   production:function(){return productionStyles()},

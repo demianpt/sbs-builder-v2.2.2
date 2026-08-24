@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { useAdvancedBuilder } from './support/builder-mode.mjs';
+import { previewSettled } from './support/preview.mjs';
 
 /**
  * The simple builder: four steps, one paragraph, three concepts.
@@ -751,6 +752,49 @@ test.describe('simple builder · Step 03 Modules', () => {
     const titles = await page.evaluate(() => window.__SBS_TEST_API.state.project.sections.map((section) => section.content.title));
     expect(titles[0]).toBe('Copy for hero');
     expect(titles.every((title) => title.startsWith('Copy for '))).toBe(true);
+  });
+
+  /*
+   * The same in-place repaint the advanced builder gets. It matters more here:
+   * the simple builder is the front door, and a page that jumps to the top
+   * every time somebody picks "Space above" is the version most people see.
+   */
+  test('changing a layout property does not move the preview', async ({ page }) => {
+    await openModules(page);
+    await page.locator('[data-editor-tab="layout"]').click();
+    const id = await page.evaluate(() => {
+      const api = window.__SBS_TEST_API;
+      api.state.selectedSectionId = api.state.project.sections[2].id;
+      return api.state.selectedSectionId;
+    });
+    await page.locator('.module-row').nth(2).click();
+    await page.locator('[data-editor-tab="layout"]').click();
+    // Reaching this step queued rebuilds of its own. Measuring before they have
+    // all landed would blame this change for somebody else's reload.
+    await previewSettled(page);
+
+    await page.evaluate((sectionId) => {
+      const frame = document.getElementById('sitePreview');
+      window.__loads = 0;
+      frame.addEventListener('load', () => { window.__loads += 1; });
+      frame.contentDocument.getElementById(sectionId).scrollIntoView({ block: 'center', behavior: 'instant' });
+    }, id);
+    await page.waitForTimeout(300);
+    const before = await page.locator('#sitePreview').evaluate((frame) => frame.contentWindow.scrollY);
+    expect(before, 'the band under test was not scrolled away from the top').toBeGreaterThan(50);
+
+    await page.locator(`[data-bind="setting.${id}.paddingTop"]`).selectOption('none');
+
+    // The band really changed…
+    await expect.poll(() => page.locator('#sitePreview').evaluate((frame, sectionId) => {
+      const band = frame.contentDocument.getElementById(sectionId);
+      return band ? band.className : '';
+    }, id)).toContain('dt-0');
+    // …without the frame being rebuilt, and without the page moving a pixel.
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.__SBS_TEST_API.paint.rebuilt()), 'a repaint degraded into a rebuild').toBe(0);
+    expect(await page.evaluate(() => window.__loads), 'the preview frame was rebuilt').toBe(0);
+    expect(await page.locator('#sitePreview').evaluate((frame) => frame.contentWindow.scrollY)).toBe(before);
   });
 
   test('the layout tab shows only the plain-language groups', async ({ page }) => {

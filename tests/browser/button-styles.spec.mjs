@@ -14,7 +14,11 @@ async function openDirection(page) {
 function previewButton(page) {
   return page.locator('#sitePreview').evaluate((frame) => {
     const doc = frame.contentDocument;
-    const site = doc.getElementById('sbs-site');
+    const site = doc && doc.getElementById('sbs-site');
+    // A frame caught between two documents has no site yet. Reporting that as a
+    // null reading lets the caller keep polling; throwing here failed the test
+    // on a page that was correct before and after the moment it was read.
+    if (!site) return { attribute: null };
     const primary = doc.querySelector('.c-btn.-primary, .c-btn.-primary-inverted');
     const link = doc.querySelector('.c-btn.-link');
     const styles = primary ? getComputedStyle(primary) : null;
@@ -75,9 +79,11 @@ test.describe('button families', () => {
 
     await page.locator('.btn-style-card:has(input[value="offset-block"])').click();
     await expect(page.locator('.btn-style-card.is-selected input')).toHaveValue('offset-block');
-    await expect.poll(() => previewButton(page).then((value) => value.attribute)).toBe('offset-block');
 
-    const after = await previewButton(page);
+    // The geometry is read in the same round trip that confirms the family
+    // landed. Confirming first and measuring second can catch the preview
+    // mid-rebuild and read the default radius off a document already replaced.
+    const after = await measureWhen(() => previewButton(page), (value) => value.attribute === 'offset-block');
     expect(after.radius).toBe('0px');
     // The offset block is the whole idea of the family.
     expect(after.boxShadow).toMatch(/6px 6px/);

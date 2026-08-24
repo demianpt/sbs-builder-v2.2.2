@@ -1,6 +1,6 @@
 {
   "name": "sbs-page-builder",
-  "version": "2.7.1",
+  "version": "2.7.2",
   "private": true,
   "description": "One SBS project, 50 production styles across 10 families, three independently editable concept workspaces, two interfaces over one engine.",
   "type": "module",
