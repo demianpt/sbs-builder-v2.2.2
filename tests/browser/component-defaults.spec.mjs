@@ -426,9 +426,12 @@ test.describe('banner overlays', () => {
 
   test('a pale scrim makes the section light, so the headline is not white on white', async ({ page }) => {
     await boot(page, ['hero']);
-    // p89 v3 washes #E3F8FF across the left 60% and puts the headline in it.
+    // p89 v3 washes white across the left 60% and puts the headline in it. The
+    // exported value was a pale *blue*, which behind a headline read as a
+    // mistake rather than a decision.
     const pale = await bannerOverlay(page, 'hero', 'sbs-hero-p89-v3');
-    expect(pale.style).toContain('#E3F8FF');
+    expect(pale.style).toContain('#ffffff');
+    expect(pale.style).not.toMatch(/E3F8FF/i);
     // The catalogue value carries a trailing semicolon and line breaks, which
     // used to reach the page as `background:…;;opacity:1;`.
     expect(pale.style).not.toContain(';;');

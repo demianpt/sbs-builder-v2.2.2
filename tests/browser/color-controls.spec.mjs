@@ -107,11 +107,16 @@ test('the overlay strength reaches the rendered scrim and the export', async ({ 
   const exported = await page.evaluate(() => {
     const api = window.__SBS_TEST_API;
     const page_ = api.buildPageExport();
-    const find = (node) => (node.attributes && 'backgroundOverlayOpacity' in node.attributes
+    const find = (node) => (node.attributes && node.attributes.backgroundOverlay
       ? node.attributes
       : (node.children || []).map(find).find(Boolean));
     return find(page_.concept.page.sections[0]);
   });
-  expect(exported.backgroundOverlayOpacity).toBe(0.25);
+  // The strength is folded into the colour rather than exported beside it: the
+  // theme's blocks carry an overlay's opacity *inside* the colour and declare no
+  // opacity attribute, so a separate number landed at full strength and the
+  // photograph vanished behind a solid band.
+  expect(exported.backgroundOverlayOpacity).toBeUndefined();
+  expect(String(exported.backgroundOverlay)).toMatch(/rgba\(|#[0-9a-f]{8}|color-mix/i);
   expect(exported.backgroundOverlayBlur).toBe('6px');
 });

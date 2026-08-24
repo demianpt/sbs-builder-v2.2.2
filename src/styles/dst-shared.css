@@ -298,13 +298,17 @@ backdrop-filter:var(--overlayFilter,none);-webkit-backdrop-filter:var(--overlayF
 .dst-content2__block{display:flex;gap:5rem;align-items:center}
 .dst-content2__col{flex:1;min-width:0}
 .dst-content2__col:first-child{flex:calc(var(--ratio,50)/50)}
-.dst-content2__col .dst-media,.dst-content2__col .ph{max-height:62vh}
+/* A column's picture is shown whole. It used to be capped at 62vh, which crops
+   a portrait image in a two-column band and shows the middle of it rather than
+   the composition — and there is no reason for a column's own media to be
+   measured against the viewport at all. */
+.dst-content2__col .dst-media,.dst-content2__col .ph{max-height:100%}
 @media(max-width:900px){.dst-content2__block{flex-direction:column!important;gap:3rem}.dst-content2__col .dst-media,.dst-content2__col .ph{max-height:none}}
 /* ds-columns (real multi-column layout, mirrors the theme .ds-row grid) */
 .ds-columns{position:relative}
 .ds-row{display:grid;gap:2rem;align-items:center}
 .ds-column{min-width:0}
-.ds-column .dst-media,.ds-column .ph{max-height:62vh}
+.ds-column .dst-media,.ds-column .ph{max-height:100%}
 @media(max-width:900px){.ds-row{grid-template-columns:1fr!important}.ds-column .dst-media,.ds-column .ph{max-height:none}}
 /* decoration image/blur variants */
 .dst-deco--image{position:absolute;pointer-events:none}
@@ -467,6 +471,10 @@ backdrop-filter:var(--overlayFilter,none);-webkit-backdrop-filter:var(--overlayF
 .dst-marquee{overflow:hidden;padding-block:3rem}
 .dst-marquee__track{display:flex;gap:5rem;width:max-content;animation:marq var(--dur,24s) linear infinite;align-items:center}
 .dst-marquee__img{max-height:var(--marq-h,4rem);width:auto;object-fit:contain;opacity:.75;filter:var(--marq-filter,none)}
+/* A placeholder mark is drawn rather than fetched, in the band's own text colour,
+   so one set reads on a dark overlay and on a light one. */
+.dst-marquee__img.is-placeholder{display:inline-flex;align-items:center;height:var(--marq-h,4rem);color:currentColor;opacity:.8;filter:none}
+.dst-marquee__img.is-placeholder svg{height:2.6rem;width:auto;display:block}
 .dst-marquee__logo{font-family:var(--dst--font-secondary);font-weight:600;font-size:1.7rem;opacity:.6;white-space:nowrap}
 @keyframes marq{to{transform:translateX(-50%)}}
 /* tabs */

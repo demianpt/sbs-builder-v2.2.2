@@ -86,6 +86,9 @@ final class SBS_Importer_Block_Converter {
 
 		$attrs = isset( $node['attributes'] ) && is_array( $node['attributes'] ) ? $this->sanitize_value( $node['attributes'] ) : array();
 		$attrs = $this->merge_node_metadata( $name, $attrs, $node, $context );
+		if ( 'ds-blocks/dst-site-logo' === $name ) {
+			$attrs = $this->resolve_site_logo( $attrs );
+		}
 		$this->record_unknown_attributes( $name, $attrs );
 
 		$children = array();
@@ -109,6 +112,32 @@ final class SBS_Importer_Block_Converter {
 			'innerHTML'    => '',
 			'innerContent' => array_fill( 0, count( $children ), null ),
 		);
+	}
+
+	/**
+	 * Turns a sideloaded logo file into the attachment id the block reads.
+	 *
+	 * `ds-blocks/dst-site-logo` takes `customLogoId`, an attachment id. The
+	 * artifact carries the file as a media object so the sideloader can fetch it
+	 * and write the id back; this is where that id becomes the attribute and the
+	 * carrier is dropped, so nothing the block does not declare reaches the page.
+	 */
+	private function resolve_site_logo( array $attrs ): array {
+		if ( ! isset( $attrs['customLogo'] ) || ! is_array( $attrs['customLogo'] ) ) {
+			return $attrs;
+		}
+		$id = absint( $attrs['customLogo']['id'] ?? 0 );
+		unset( $attrs['customLogo'] );
+		if ( $id ) {
+			$attrs['customLogoId'] = $id;
+			$attrs['logoSource'] = 'custom';
+		} else {
+			// Nothing was fetched, so the block falls back to the site's own logo
+			// rather than pointing at a file this install does not have.
+			$this->warnings[] = __( 'The navigation logo file could not be fetched; the site logo is used instead.', 'sbs-website-importer' );
+			unset( $attrs['logoSource'] );
+		}
+		return $attrs;
 	}
 
 	private function merge_node_metadata( string $name, array $attrs, array $node, array $context ): array {
@@ -208,19 +237,30 @@ final class SBS_Importer_Block_Converter {
 	private function core_block( string $name, array $attrs, array $children, array $node ): array {
 		switch ( $name ) {
 			case 'core/paragraph':
-				$content = $this->safe_rich_text( $attrs['content'] ?? $node['content']['text'] ?? '' );
+				/*
+				 * `node['text']` first.
+				 *
+				 * The builder moves a paragraph's words onto the node — its export
+				 * normalizer does `node.text = node.text || attrs.content` and then
+				 * deletes the attribute — and this only ever looked at the attribute
+				 * and at `content.text`. So every paragraph in every artifact
+				 * imported blank: body copy, the footer description, the legal line,
+				 * the announcement bar. Nothing reported it, because an empty
+				 * paragraph is a valid block.
+				 */
+				$content = $this->safe_rich_text( $node['text'] ?? $attrs['content'] ?? $node['content']['text'] ?? '' );
 				unset( $attrs['content'], $attrs['placeholder'] );
 				$class = ! empty( $attrs['className'] ) ? ' class="' . esc_attr( $attrs['className'] ) . '"' : '';
 				$html = '<p' . $class . '>' . $content . '</p>';
 				return $this->static_block( $name, $attrs, $html );
 			case 'core/heading':
-				$content = $this->safe_rich_text( $attrs['content'] ?? '' );
+				$content = $this->safe_rich_text( $node['text'] ?? $attrs['content'] ?? '' );
 				$level = max( 1, min( 6, (int) ( $attrs['level'] ?? 2 ) ) );
 				unset( $attrs['content'] );
 				$html = sprintf( '<h%d class="wp-block-heading">%s</h%d>', $level, $content, $level );
 				return $this->static_block( $name, $attrs, $html );
 			case 'core/list-item':
-				$content = $this->safe_rich_text( $attrs['content'] ?? $node['content']['text'] ?? '' );
+				$content = $this->safe_rich_text( $node['text'] ?? $attrs['content'] ?? $node['content']['text'] ?? '' );
 				unset( $attrs['content'] );
 				$html = '<li>' . $content . '</li>';
 				return $this->static_block( $name, $attrs, $html );
@@ -278,10 +318,23 @@ final class SBS_Importer_Block_Converter {
 		return null;
 	}
 
+	/**
+	 * Writes a menu id into a menu block that has no location to read.
+	 *
+	 * A 2.0 artifact's blocks name a location — `menuSource: 'location'`,
+	 * `menuLocation: 'primary-menu'` — which is what the theme reads, and the
+	 * importer has already pointed that location at the menu it built. Writing an
+	 * id as well would add an attribute the theme's block does not declare, so
+	 * this now only fills in for a 1.0 artifact that names no location at all.
+	 */
 	private function inject_navigation_menu_id( array &$node, int $menu_id ): void {
 		if ( 'ds-blocks/dst-navigation-menu' === ( $node['component'] ?? '' ) ) {
 			$node['attributes'] = isset( $node['attributes'] ) && is_array( $node['attributes'] ) ? $node['attributes'] : array();
-			$node['attributes']['menuValue'] = (string) $menu_id;
+			$located = '' !== (string) ( $node['attributes']['menuLocation'] ?? '' );
+			if ( ! $located && $menu_id ) {
+				$node['attributes']['menuId'] = (int) $menu_id;
+				$node['attributes']['menuSource'] = 'custom';
+			}
 		}
 		if ( ! empty( $node['children'] ) && is_array( $node['children'] ) ) {
 			foreach ( $node['children'] as &$child ) {

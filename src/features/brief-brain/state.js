@@ -169,6 +169,9 @@ export function ensureSimpleState(project) {
   const defaults = {
     schemaVersion: SIMPLE_SCHEMA_VERSION,
     briefText: '',
+    // Documents the strategist attached rather than pasted. The words are the
+    // brain's; the file name is the person's. See `briefSourceText`.
+    briefFiles: [],
     status: 'idle',
     error: '',
     errorCode: '',
@@ -200,6 +203,7 @@ export function ensureSimpleState(project) {
   simple.schemaVersion = SIMPLE_SCHEMA_VERSION;
   if (!Array.isArray(simple.concepts)) simple.concepts = [];
   if (!Array.isArray(simple.flows)) simple.flows = [];
+  if (!Array.isArray(simple.briefFiles)) simple.briefFiles = [];
   if (!['idle', 'reading', 'ready', 'error'].includes(simple.status)) simple.status = 'idle';
   settleStaleStatus(simple, SIMPLE_BUSY_STATUSES);
   // `null` means "nothing chosen yet", and that is the exit condition for the
@@ -219,15 +223,70 @@ export function hasChosenConcept(simple) {
   return Boolean(simple && simple.concepts.length && simple.active !== null);
 }
 
-export function conceptsAreStale(simple) {
+/* ---------------------------------------------------------------- *
+ * What "the brief" is
+ *
+ * A brief arrives two ways: typed into the box, or handed over as a PDF or a
+ * Word document. Those are the same brief, and only one of them belongs in the
+ * textarea — pasting three pages of a client's PDF into a box the strategist is
+ * meant to read and edit buries their own words in it, and the box is not where
+ * a document goes. A document is *attached*: it shows as its own name, and its
+ * words go straight to the brain.
+ *
+ * So the typed paragraph and the attachments are stored separately and joined
+ * here, in one place, because everything downstream has to agree on the answer:
+ * the request the brain receives, the length the button is gated on, the counter,
+ * and the comparison that decides whether the concepts have gone stale.
+ * ---------------------------------------------------------------- */
+
+/** The documents attached to the brief, oldest first. */
+export function briefAttachments(project) {
+  const files = project?.simple?.briefFiles;
+  return Array.isArray(files) ? files.filter((entry) => entry && entry.name) : [];
+}
+
+/**
+ * The whole brief, as the brain reads it.
+ *
+ * Each document is announced by name before its words. The model is being asked
+ * to weigh several sources, and an unlabelled wall of concatenated text hides
+ * which sentence came from the client's own brief and which from a rate card
+ * that happened to be in the same folder.
+ */
+export function briefSourceText(project) {
+  const typed = String(project?.simple?.briefText || '').trim();
+  const parts = typed ? [typed] : [];
+  for (const file of briefAttachments(project)) {
+    const text = String(file.text || '').trim();
+    if (text) parts.push(`--- ${file.name} ---\n${text}`);
+  }
+  return parts.join('\n\n').slice(0, BRIEF_TEXT_LIMIT);
+}
+
+/** How much brief there is, typed and attached together. */
+export function briefSourceLength(project) {
+  return briefSourceText(project).length;
+}
+
+/**
+ * Whether the concepts predate the brief they were built from.
+ *
+ * Takes the project rather than the slice, because a brief is now a paragraph
+ * *and* its attachments: removing a document has to make the concepts stale
+ * exactly as editing the paragraph does. The slice is still accepted, so an
+ * older caller keeps working on the typed text alone.
+ */
+export function conceptsAreStale(input) {
+  const simple = input && input.simple ? ensureSimpleState(input) : input;
   if (!simple?.concepts.length || !simple.generatedFrom) return false;
-  return simple.generatedFrom !== String(simple.briefText || '').trim();
+  const source = input && input.simple ? briefSourceText(input) : String(simple.briefText || '').trim();
+  return simple.generatedFrom !== source;
 }
 
 export function buildConceptsRequest({ project, archetypes, flows }) {
   const understand = buildUnderstandRequest({ project, archetypes, flows });
   return {
-    briefText: String(project?.simple?.briefText || '').slice(0, BRIEF_TEXT_LIMIT),
+    briefText: briefSourceText(project),
     archetypes: understand.archetypes,
     flows: understand.flows,
   };
@@ -308,7 +367,7 @@ export function buildMediaRequest({ project, slots }) {
     brief: Object.fromEntries(BRIEF_FIELD_ORDER.map(([key]) => [key, String(project?.brief?.[key] ?? '')])),
     // The simple builder has one paragraph and may have no fields yet; the
     // server splits it rather than searching on an empty brief.
-    briefText: String(project?.simple?.briefText || '').slice(0, BRIEF_TEXT_LIMIT),
+    briefText: briefSourceText(project),
     slots: (slots || []).slice(0, 48),
   };
 }

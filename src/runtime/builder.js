@@ -707,11 +707,33 @@ function normalizeExportNode(input,ctx={depth:0,index:0}){let node=cleanExportVa
   const reg=DATA.registry[node.component];if(reg&&node.component!=='gravityforms/form'&&!node.component.startsWith('core/')){const allowed=new Map((reg.attributes||[]).map(a=>[a.name,a]));for(const key of Object.keys(attrs)){if(!allowed.has(key))delete attrs[key]}const required=(reg.attributes||[]).filter(a=>!a.hasDefault);for(const desc of required){if(!Object.prototype.hasOwnProperty.call(attrs,desc.name))attrs[desc.name]=mandatoryExportValue(desc,attrs,ctx.index)}for(const [key,desc] of allowed){const val=attrs[key],values=desc.enum;if(values&&typeof val==='string'&&val!==''&&!values.includes(val)){const fallback=desc.hasDefault&&values.includes(desc.default)?desc.default:values[0];attrs[key]=fallback}}}
   if(ctx.depth>0&&['default','alt','wide'].includes(node.layout.container))node.layout.container='full';node.children=(Array.isArray(node.children)?node.children:[]).map((child,i)=>normalizeExportNode(child,{...ctx,depth:ctx.depth+1,index:i}));return node}
 function makeFullBleedBand(input,section){const chosen=['default','alt'].includes(section.layout?.container)?section.layout.container:'default';let outer,content;if(input.component==='ds-blocks/dst-wrapper'){outer=input;content=outer.children||[]}else{const carriedEffects=input.dsEffects?deepClone(input.dsEffects):null,carriedDecorations=input.decorations?deepClone(input.decorations):null;const innerContent=input;for(const key of ['pattern','patternMeta','role','composed','note','inverted','dsEffects','decorations'])delete innerContent[key];innerContent.layout={...(innerContent.layout||{}),container:'full'};outer={id:input.id,component:'ds-blocks/dst-wrapper',usage:FAMILY_USAGE[section.family]||'section',confidence:'confirmed',attributes:{},layout:{},children:[]};if(carriedEffects)outer.dsEffects=carriedEffects;if(carriedDecorations)outer.decorations=carriedDecorations;content=[innerContent]}
-  outer.attributes=outer.attributes||{};outer.attributes.fullWidthWrapper=true;outer.attributes.backgroundColor='var(--dst--body-bg-alt)';delete outer.attributes.backgroundImage;outer.layout={...(outer.layout||{}),container:'full',fullWidthWrapper:true,padding:{top:section.layout?.paddingTop||'default',bottom:section.layout?.paddingBottom||'default'},background:{kind:'slot',slot:'body-bg-alt'}};outer.inverted=true;outer.children=[{id:`${outer.id}-inner`,component:'ds-blocks/dst-wrapper',usage:'inner-container',confidence:'confirmed',attributes:{htmlTag:'div'},layout:{container:chosen,padding:{top:'none',bottom:'none'}},children:content}];return outer}
+  outer.attributes=outer.attributes||{};outer.attributes.fullWidthWrapper=true;
+  // The inverted ground is the colour *behind* the picture, not instead of it.
+  // Deleting the photograph here was the second half of the same defect: an
+  // inverted photo band exported as a flat dark rectangle.
+  const invertedBg=(outer.attributes.backgroundImage||[]).length;
+  if(!outer.attributes.backgroundColor||!invertedBg)outer.attributes.backgroundColor='var(--dst--body-bg-alt)';
+  outer.layout={...(outer.layout||{}),container:'full',fullWidthWrapper:true,padding:{top:section.layout?.paddingTop||'default',bottom:section.layout?.paddingBottom||'default'},background:invertedBg?{kind:'media'}:{kind:'slot',slot:'body-bg-alt'}};outer.inverted=true;outer.children=[{id:`${outer.id}-inner`,component:'ds-blocks/dst-wrapper',usage:'inner-container',confidence:'confirmed',attributes:{htmlTag:'div'},layout:{container:chosen,padding:{top:'none',bottom:'none'}},children:content}];return outer}
 function normalizeExportSection(section){syncSectionNode(section);let node=normalizeExportNode(section.node,{depth:0,index:0,section});node.pattern=section.patternId;node.role=section.family;node.usage=FAMILY_USAGE[section.family]||node.usage||'section';node.inverted=!!section.layout?.inverted;node.note=`Built from ${section.patternId} (${patternLabel(section)}); edited in the SBS DST Page Builder.`;node.composed={patternId:section.patternId,family:section.family,source:'attached-skill-library'};node.layout={...(node.layout||{}),container:section.layout?.container||node.layout?.container||'default',padding:{top:section.layout?.paddingTop||'default',bottom:section.layout?.paddingBottom||'default'}};
   if(node.component==='ds-blocks/dst-banner'){node.layout.container='full';node.layout.background=(node.attributes?.backgroundImage||[]).length?{kind:'media'}:{kind:'slot',slot:section.layout?.inverted?'body-bg-alt':'body-bg'};node.layout.banner={height:node.attributes.bannerHeight||'auto',borderRadius:node.attributes.borderRadius||'none',scrollDown:!!node.attributes.showScrollDown,scrollDownPosition:node.attributes.scrollDownPosition||'sd-left',considerHeader:!!node.attributes.considerHeaderHeight};node.attributes.backgroundColor=`var(--dst--${section.layout?.inverted?'body-bg-alt':'body-bg'})`;node.attributes.innerContainerWidth=node.attributes.innerContainerWidth||'container'}
   else if(section.layout?.inverted){node=makeFullBleedBand(node,section)}
-  else if(node.component==='ds-blocks/dst-wrapper'){delete node.attributes.backgroundColor;delete node.attributes.backgroundImage;if(node.layout?.background&&node.layout.background.kind!=='none')delete node.layout.background;delete node.layout.fullWidthWrapper;delete node.attributes.fullWidthWrapper}
+  else if(node.component==='ds-blocks/dst-wrapper'){
+    /*
+     * A band keeps its own background.
+     *
+     * This used to delete `backgroundImage` and `backgroundColor` outright, which
+     * meant a pattern authored as a photograph with a scrim over it arrived in
+     * WordPress as a flat colour — and, worse, arrived different from the preview
+     * that had just been approved, because the preview renders both. Two thirds
+     * of the library is rooted in a wrapper, so this was most of the page.
+     *
+     * `fullWidthWrapper` is still dropped: that is the builder's own bookkeeping
+     * for an inverted full-bleed band, not a DST attribute.
+     */
+    var wrapperBg=(node.attributes.backgroundImage||[]).length?{kind:'media'}:null;
+    if(wrapperBg)node.layout.background=wrapperBg;
+    else if(node.layout?.background&&node.layout.background.kind!=='none')delete node.layout.background;
+    delete node.layout.fullWidthWrapper;delete node.attributes.fullWidthWrapper}
   const directFx=/^(fade($|-)|zoom-|slide-)/.test(String(node.dsEffects?.type||''))&&!String(node.dsEffects?.type||'').startsWith('fade-in-seq');if((node.decorations||[]).length&&directFx&&node.children?.length){node.children[0].dsEffects=deepClone(node.dsEffects);delete node.dsEffects}
   node.pattern=section.patternId;node.role=section.family;node.usage=FAMILY_USAGE[section.family]||node.usage||'section';node.inverted=!!section.layout?.inverted;node.note=`Built from ${section.patternId} (${patternLabel(section)}); edited in the SBS DST Page Builder.`;node.composed={patternId:section.patternId,family:section.family,source:'attached-skill-library'};return node}
 function hexRgb(hex){let h=String(hex||'').replace('#','');if(h.length===3)h=h.split('').map(x=>x+x).join('');if(!/^[0-9a-f]{6}$/i.test(h))return [255,255,255];return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16))}
@@ -729,7 +751,7 @@ setTimeout(updateDevice,100);
 (function(){
 'use strict';
 
-var SBS_BUILDER_VERSION='2.7.2';
+var SBS_BUILDER_VERSION='2.9.0';
 var legacySiteCssV1=siteCss;
 var legacyApplyArchetypeV1=applyArchetype;
 var legacyValidateProjectV1=validateProject;
@@ -6705,6 +6727,1932 @@ v6BindPreview=function(){
 };
 
 /* ================================================================== *
+ * v19 — Named corrections: a held picture, a readable form, a real wordmark
+ *
+ * Five small things, each reported from looking at a real page.
+ * ================================================================== */
+
+/*
+ * A column can hold still while the column beside it scrolls.
+ *
+ * The two `p31` stats bands put a tall picture beside a list of figures, and
+ * centring the picture against a list twice its height leaves it floating in the
+ * middle of a lot of nothing. Held at the top of the band while the figures move
+ * past it, the same two columns read as one composition.
+ *
+ * `class` is a registered DST attribute, so the marker the pattern carries is a
+ * real class in WordPress too rather than something only the preview knows.
+ */
+var renderNodeBeforeV19=renderNode;
+renderNode=function(node,ctx){
+  if(!node||node.component!=='ds-blocks/ds-column')return renderNodeBeforeV19(node,ctx);
+  var attrs=node.attributes||{},extra=cleanText(attrs.class||attrs.className||'');
+  var html=renderNodeBeforeV19(node,ctx);
+  if(!extra)return html;
+  return html.replace('class="ds-column"','class="ds-column '+escAttr(extra)+'"');
+};
+
+/**
+ * A colour dark enough to read on the form slot's white card.
+ *
+ * `p.ink` is the page's text colour, and on a dark-ground palette that is a pale
+ * colour — pale type on the white card the form sits on. So the darkest of the
+ * palette's own candidates is used, and `#111` is the floor when a palette has
+ * nothing dark in it at all.
+ */
+function v19FormInk(palette){
+  var candidates=[palette.ink,palette.dark,'#111111'];
+  for(var i=0;i<candidates.length;i++){
+    var hex=String(candidates[i]||'');
+    if(/^#[0-9a-f]{3,8}$/i.test(hex)&&relativeLum(hex)<.38)return hex;
+  }
+  return '#111111';
+}
+
+var siteCssBeforeV19=siteCss;
+siteCss=function(project){
+  var palette=project.design.palette;
+  return siteCssBeforeV19(project)+'\n'+[
+    /*
+     * The closing statement is the last thing a visitor reads, and it was
+     * measured at 105rem with its headline clamped to twelve characters — which
+     * broke a four-word sign-off across four lines. It takes the width it has.
+     */
+    '#sbs-site .sbs-footer-statement{max-width:100%}',
+    '#sbs-site .sbs-footer-statement .footer__nl-head{max-width:100%}',
+    /*
+     * The centred layout is the exception, and it has to be.
+     *
+     * Centring is relative to something: with the statement at full width there
+     * is nothing to centre within, and the centred footer became a copy of the
+     * editorial one. It keeps a reading measure — which is what a centred line
+     * needs anyway, because a single centred sentence 1,400px wide is not a
+     * composition either.
+     */
+    '#sbs-site .sbs-footer.footer-centered .sbs-footer-statement{max-width:105rem}',
+    '#sbs-site .sbs-footer.footer-centered .sbs-footer-statement .footer__nl-head{max-width:20ch}',
+    // Pale type on the white card the form sits on, whenever the palette's ink
+    // is light. The form is the one surface that is always white.
+    '#sbs-site .sbs-form-slot{color:'+v19FormInk(palette)+'}',
+    '#sbs-site .sbs-form-slot__head b{color:'+v19FormInk(palette)+'}',
+    /*
+     * The held column.
+     *
+     * `align-self:start` is what makes sticky mean anything in a grid: a stretched
+     * item is already as tall as the row and has nowhere to travel. The ancestors
+     * are un-clipped explicitly — `overflow:hidden` anywhere above a sticky
+     * element silently turns it back into a static one, and `.has-bg-media` and
+     * the decoration layers both set it.
+     */
+    '#sbs-site .ds-column.is-sticky-media{position:sticky;top:0;align-self:start}',
+    '#sbs-site .ds-row:has(.is-sticky-media){align-items:start}',
+    '#sbs-site .dst-wrapper:has(.is-sticky-media),#sbs-site .ds-columns:has(.is-sticky-media){overflow:visible}',
+    '#sbs-site .ds-column.is-sticky-media .dst-media,#sbs-site .ds-column.is-sticky-media .ph{max-height:100%}',
+    // A held picture that is taller than the viewport can never be seen whole,
+    // so it is bounded by the window rather than by the row beside it.
+    '@media(min-width:901px){#sbs-site .ds-column.is-sticky-media>*{max-height:calc(100vh - 2rem)}}',
+    // Sticky and a phone's single column do not mix: the picture would pin to
+    // the top and the copy would scroll under it.
+    '@media(max-width:900px){#sbs-site .ds-column.is-sticky-media{position:static}}'
+  ].join('');
+};
+
+/*
+ * The watermark is the client's name.
+ *
+ * `footer.wordmark` was seeded once from the brand and then never revisited —
+ * `if(!project.footer.wordmark)` is only ever true on a brand new project — so
+ * every page built afterwards carried "Vision" across the bottom, from the
+ * default project's own name. It now follows the brand the way the logo text and
+ * the legal line already do, until somebody types their own.
+ */
+var v2SyncBrandBeforeV19=v2SyncBrand;
+v2SyncBrand=function(project,force){
+  v2SyncBrandBeforeV19(project,force);
+  if(!project||!project.footer)return;
+  var brand=cleanText(project.brief.clientName||project.brief.projectName||project.client||'');
+  if(!brand)return;
+  if(force||!project.footer.wordmarkCustom)project.footer.wordmark=v19Wordmark(brand);
+};
+
+/**
+ * The brand as a watermark.
+ *
+ * One word, because it is set at ten rem and two words at that size is a wall.
+ * The first word is right for "Red Moon Motorcycles" and wrong for "The Bicycle
+ * Company", so a leading article is dropped first — and a first word short
+ * enough to read as a fragment takes the second with it.
+ */
+var V19_ARTICLES=['the','a','an'];
+function v19Wordmark(brand){
+  var words=String(brand).split(/\s+/).filter(Boolean);
+  if(V19_ARTICLES.indexOf(String(words[0]||'').toLowerCase())>=0&&words.length>1)words=words.slice(1);
+  if(!words.length)return brand;
+  if(words[0].length<=3&&words[1])return words[0]+' '+words[1];
+  return words[0];
+}
+
+/*
+ * Typing a wordmark keeps it.
+ *
+ * The same rule the logo text and the legal line follow: the field is the
+ * strategist's from the moment they touch it, and the brand sync stops writing
+ * over it.
+ */
+var updateBindingBeforeV19=updateBinding;
+updateBinding=function(path,value,input){
+  if(String(path||'')==='global.footer.wordmark')state.project.footer.wordmarkCustom=true;
+  return updateBindingBeforeV19(path,value,input);
+};
+
+/* ================================================================== *
+ * v21 — Only attributes the theme declares leave the builder
+ *
+ * `scripts/verify-against-theme.mjs` looks every exported attribute up in the
+ * theme's own `block.json` and reports the ones that are not there. WordPress
+ * keeps an unknown attribute in the block comment and ignores it — so it is not
+ * an error, it is worse: a setting the strategist made that the page does not
+ * have, and nothing anywhere says so.
+ *
+ * Two of them were real:
+ *
+ *   backgroundOverlayOpacity   The theme carries an overlay's strength *inside
+ *                              the colour* — `#333333b0`, `rgba(7,28,42,.82)` —
+ *                              and declares no opacity attribute. Exported as a
+ *                              separate number, every scrim landed at full
+ *                              strength: a hero's photograph vanished behind a
+ *                              solid band of ink. So the strength is folded into
+ *                              the colour, which is both what the theme reads and
+ *                              what the preview already computes.
+ *
+ *   htmlTag                    Invented by `makeFullBleedBand`. A wrapper is a
+ *                              `<section>` and has no say in it.
+ * ================================================================== */
+
+/** `0` … `1`, whatever the attribute happens to hold. */
+function v21Strength(value){
+  var number=Number(value);
+  if(!Number.isFinite(number))return 1;
+  if(number>1)number=number/100;
+  return Math.max(0,Math.min(1,number));
+}
+
+function v21HexAlpha(alpha){
+  var byte=Math.round(clamp(alpha,0,1)*255).toString(16);
+  return byte.length<2?'0'+byte:byte;
+}
+
+/**
+ * One colour, at a fraction of its own opacity.
+ *
+ * Multiplied rather than replaced: a stop that was already half transparent and
+ * sits under a 60% scrim ends up at 30%, which is what the browser composites in
+ * the preview. Replacing would make a fading gradient opaque at both ends.
+ */
+function v21Fade(colour,strength){
+  var text=String(colour||'').trim();
+  if(!text||strength>=1)return text;
+  var rgba=text.match(/^rgba?\(\s*([^)]+)\)$/i);
+  if(rgba){
+    var parts=rgba[1].split(/[,\/]/).map(function(part){return part.trim()});
+    var alpha=parts.length>3?Number(parts[3]):1;
+    if(!Number.isFinite(alpha))alpha=1;
+    return 'rgba('+parts.slice(0,3).join(', ')+', '+Number((alpha*strength).toFixed(3))+')';
+  }
+  var hex8=text.match(/^#([0-9a-f]{6})([0-9a-f]{2})$/i);
+  if(hex8)return '#'+hex8[1]+v21HexAlpha(parseInt(hex8[2],16)/255*strength);
+  var hex6=text.match(/^#([0-9a-f]{6})$/i);
+  if(hex6)return '#'+hex6[1]+v21HexAlpha(strength);
+  var hex3=text.match(/^#([0-9a-f]{3})$/i);
+  if(hex3){
+    var full=hex3[1].split('').map(function(c){return c+c}).join('');
+    return '#'+full+v21HexAlpha(strength);
+  }
+  if(/^transparent$/i.test(text))return text;
+  /*
+   * A token or a keyword cannot be faded here, because its value is only known
+   * in the browser. `color-mix` is how CSS says "this colour, weaker", and every
+   * browser the theme supports has it.
+   */
+  return 'color-mix(in srgb, '+text+' '+Math.round(strength*100)+'%, transparent)';
+}
+
+/** A gradient at a fraction of its opacity: every stop, individually. */
+function v21FadeValue(value,strength){
+  var text=String(value||'').trim();
+  if(!text||strength>=1)return text;
+  if(!/gradient\(/i.test(text))return v21Fade(text,strength);
+  return text.replace(/rgba?\([^)]*\)|#[0-9a-f]{8}\b|#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/gi,function(stop){
+    return v21Fade(stop,strength);
+  });
+}
+
+var V21_OVERLAY_PAIRS=[
+  ['backgroundOverlay','backgroundOverlayOpacity'],
+  ['mediaOverlay','mediaOverlayOpacity']
+];
+
+/**
+ * Folds every overlay strength into its colour, everywhere in one tree.
+ *
+ * Done at the very end rather than inside `normalizeExportNode`, because the
+ * fidelity layer writes the surface attributes *after* the node normalizer has
+ * run — folding earlier left every strength to be written straight back.
+ */
+function v21Clean(node){
+  if(!node||typeof node!=='object')return node;
+  var attrs=node.attributes||{};
+  V21_OVERLAY_PAIRS.forEach(function(pair){
+    var colour=pair[0],opacity=pair[1];
+    if(!(opacity in attrs))return;
+    var strength=v21Strength(attrs[opacity]);
+    delete attrs[opacity];
+    if(!attrs[colour])return;
+    if(attrs.backgroundOverlayEnabled===false)return;
+    attrs[colour]=v21FadeValue(attrs[colour],strength);
+  });
+  // A background layer carries its own overlay the same way.
+  var layers=attrs.backgroundImage;
+  if(Array.isArray(layers))layers.forEach(function(layer){
+    if(!layer||typeof layer!=='object')return;
+    if(!('overlayOpacity' in layer))return;
+    var strength=v21Strength(layer.overlayOpacity);
+    delete layer.overlayOpacity;
+    if(layer.overlay&&layer.overlayEnabled!==false)layer.overlay=v21FadeValue(layer.overlay,strength);
+  });
+  // A wrapper is a `<section>`; the block has no say in its tag.
+  if(node.component==='ds-blocks/dst-wrapper')delete attrs.htmlTag;
+  (node.children||[]).forEach(v21Clean);
+  return node;
+}
+
+var normalizeExportSectionBeforeV21=normalizeExportSection;
+normalizeExportSection=function(section){
+  return v21Clean(normalizeExportSectionBeforeV21(section));
+};
+
+var headerExportBeforeV21=headerExport;
+headerExport=function(project){return v21Clean(headerExportBeforeV21(project))};
+
+var footerExportBeforeV21=footerExport;
+footerExport=function(project){return v21Clean(footerExportBeforeV21(project))};
+
+/* ================================================================== *
+ * v20 — The header and the footer are real block trees
+ *
+ * They were shorthand. `headerExport` emitted one `dst-navigation` node with a
+ * `nav: {logo, menu, cta}` object hanging off it and `importerShorthand: true`,
+ * and the plugin expanded that into whatever it guessed the navigation family
+ * looked like. The footer did the same. Which is why an imported header never
+ * matched the preview: nobody was reading the theme.
+ *
+ * The theme ships the answer. `parts/header.html` and `parts/footer.html` in the
+ * digitalsilk theme are the canonical trees — the exact blocks, the exact
+ * attribute names, the exact nesting — and these two functions build them:
+ *
+ *   dst-navigation
+ *     dst-navigation-announcement > simple-text > paragraph
+ *     dst-navigation-top
+ *     dst-navigation-main
+ *       dst-navigation-content[logo]   > dst-site-logo
+ *       dst-navigation-content[menu]   > dst-navigation-menu
+ *       dst-navigation-content[search] > dst-navigation-search
+ *     dst-navigation-mobile
+ *       dst-navigation-content[logo] > dst-site-logo
+ *       dst-navigation-mobile-dropdown > dst-navigation-menu
+ *     dst-navigation-bottom
+ *
+ *   dst-footer
+ *     dst-footer-section[top]    > dst-footer-slot > dst-block-title
+ *     dst-footer-section[middle] > 4 × dst-footer-slot
+ *     dst-footer-section[bottom] > 3 × dst-footer-slot
+ *
+ * Menus are the other half. The theme's menu blocks read a *location*
+ * (`menuSource: 'location'`, `menuLocation: 'primary-menu'`) rather than a list
+ * of links, so the links go in the artifact for the importer to build the menu
+ * from and the blocks name the location they expect to find it in. Anything else
+ * imports as an empty menu.
+ * ================================================================== */
+
+var V20_ID=0;
+function v20Node(component, attributes, children){
+  V20_ID+=1;
+  return {
+    id:'global-'+component.split('/').pop()+'-'+V20_ID,
+    component:component,
+    usage:'global',
+    confidence:'confirmed',
+    attributes:attributes||{},
+    children:children||[],
+    layout:{container:'full'}
+  };
+}
+
+/**
+ * A list of links, as one paragraph of anchors.
+ *
+ * The theme's footer part does exactly this for its own link column. `c-list-item`
+ * looks like the right block and is not: it has `listTitle`, `listSubTitle`,
+ * `heroText` and `icon`, and no link attribute at all — so a link column built
+ * from list items imports as a column of unclickable words.
+ */
+function v20Links(links,separator){
+  var list=(links||[]).filter(function(link){return link&&cleanText(link[0])});
+  var html=list.map(function(link){
+    return '<a href="'+escAttr(normalizeLink(link[1]))+'">'+esc(cleanText(link[0]))+'</a>';
+  }).join(separator===undefined?'<br>':esc(separator));
+  return v20Node('ds-blocks/simple-text',{},[
+    Object.assign(v20Node('core/paragraph',{}),{text:html})
+  ]);
+}
+
+function v20Paragraph(text){
+  return v20Node('ds-blocks/simple-text',{},[
+    Object.assign(v20Node('core/paragraph',{}),{text:cleanText(text)})
+  ]);
+}
+
+/** The menu locations the theme declares, and what the builder puts in each. */
+var V20_MENUS={primary:'primary-menu',secondary:'footer-secondary',tertiary:'footer-tertiary'};
+
+function v20MenuBlock(location,context,extra){
+  return v20Node('ds-blocks/dst-navigation-menu',Object.assign({
+    menuSource:'location',
+    menuLocation:location,
+    menuContext:context
+  },extra||{}));
+}
+
+/**
+ * The site logo.
+ *
+ * `logoSource: 'inline'` with `inlineSvgLogo` is how the theme takes a mark that
+ * is not an uploaded file, which is what the builder has: an initials mark it
+ * drew itself. A real logo URL becomes `customLogoId` at import, once the file
+ * has been sideloaded and has an attachment id.
+ */
+function v20Logo(project,context){
+  var header=project.header,url=cleanText(header.logoUrl);
+  var attributes={logoContext:context};
+  // A media object with a `url`, because that is the shape the importer's
+  // sideloader walks: it fetches the file, writes the attachment id back into the
+  // `id` key, and the converter turns that into `customLogoId`. A bare
+  // `logoUrl` string would never be fetched and would point at wherever the
+  // strategist got it from.
+  if(url){attributes.logoSource='custom';attributes.customLogo={id:0,url:url,alt:cleanText(header.logoText||''),mimeType:'',mediaType:'image',size:'full'}}
+  else{
+    attributes.logoSource='inline';
+    attributes.inlineSvgLogo=v20InitialsSvg(header.logoMark||v2Initials(header.logoText||project.brief.clientName),project);
+  }
+  if(context==='footer'){attributes.logoWidth='187px';attributes.logoHeight='136px'}
+  return v20Node('ds-blocks/dst-site-logo',attributes);
+}
+
+/** The initials mark, as an SVG the theme can hold inline. */
+function v20InitialsSvg(mark,project){
+  var text=esc(String(mark||'').slice(0,3).toUpperCase()),
+    ink=project.design.palette.accent;
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" role="img" aria-label="'+text+'">'+
+    '<text x="0" y="30" font-family="Inter, system-ui, sans-serif" font-size="28" font-weight="700" fill="'+escAttr(ink)+'">'+text+'</text></svg>';
+}
+
+/**
+ * The navigation, as the theme builds it.
+ *
+ * Every attribute name here is one `ds-blocks/dst-navigation` and its children
+ * actually declare — checked against the theme's own `block.json` rather than
+ * invented, because an attribute the block does not know is an attribute the
+ * editor will not show and WordPress will not render.
+ */
+function v20NavigationNode(project){
+  var header=project.header,announcement=cleanText(header.announcement||header.announcementText||'');
+  var attributes={
+    displayType:header.position||'sticky',
+    frostedGlass:!!header.frostedGlass,
+    hideOnScrollDown:!!header.hideOnScrollDown,
+    useAnnouncementBar:!!announcement,
+    announcementBarDismissible:!!header.announcementDismissible,
+    showTopNavigation:false,
+    showBottomNavigation:false,
+    dsContainerAlign:'center',
+    innerContainerWidth:'container',
+    metadata:{name:'Header'}
+  };
+  var children=[];
+  if(announcement){
+    children.push(v20Node('ds-blocks/dst-navigation-announcement',{},[v20Paragraph(announcement)]));
+  }
+  children.push(v20Node('ds-blocks/dst-navigation-top',{}));
+  children.push(v20Node('ds-blocks/dst-navigation-main',{},[
+    v20Node('ds-blocks/dst-navigation-content',{navigationArea:'logo',className:'site-header__col -left',metadata:{name:'Main Left Blocks Area'}},[v20Logo(project,'header')]),
+    v20Node('ds-blocks/dst-navigation-content',{navigationArea:'menu',className:'site-header__col -center',metadata:{name:'Main Center Blocks Area'}},[v20MenuBlock(V20_MENUS.primary,'header',{orientation:'horizontal'})]),
+    v20Node('ds-blocks/dst-navigation-content',{navigationArea:'search',className:'site-header__col -right',metadata:{name:'Main Right Blocks Area'}},v20HeaderRight(project))
+  ]));
+  children.push(v20Node('ds-blocks/dst-navigation-mobile',{},[
+    v20Node('ds-blocks/dst-navigation-content',{navigationArea:'logo',className:'site-header__widget',metadata:{name:'Mobile Blocks Area'}},[v20Logo(project,'header')]),
+    v20Node('ds-blocks/dst-navigation-mobile-dropdown',{},[
+      // The phone takeover the strategist chose is a class on the dropdown, and
+      // the burger itself is the menu block's own concern.
+      v20MenuBlock(V20_MENUS.primary,'header',{isBurgerMenu:true,enableMobileAccordion:true,orientation:'vertical'})
+    ])
+  ]));
+  children.push(v20Node('ds-blocks/dst-navigation-bottom',{}));
+
+  var node=v20Node('ds-blocks/dst-navigation',attributes,children);
+  node.id='site-header';
+  node.usage='header';
+  node.role='header';
+  // The takeover style is a builder concept with no attribute behind it, so it
+  // travels as a class the theme's stylesheet can hook and the importer keeps.
+  node.attributes.className=('site-header mobile-menu--'+mobileMenuStyle(header.mobileMenu)).trim();
+  return node;
+}
+
+/** Whatever the right-hand column of the header holds. */
+function v20HeaderRight(project){
+  var header=project.header,out=[];
+  if(header.showSearch!==false)out.push(v20Node('ds-blocks/dst-navigation-search',{searchType:'overlay'}));
+  var cta=header.cta&&cleanText(header.cta.text);
+  if(cta){
+    out.push(v20Node('ds-blocks/button-group',{justifyContent:'flex-end'},[
+      v20Node('ds-blocks/c-btn',{text:cta,btnType:'primary',link:{url:normalizeLink(header.cta.link||'#contact'),opensInNewTab:false,title:''},hasIcon:false,iconPosition:'row-reverse'})
+    ]));
+  }
+  return out;
+}
+
+/**
+ * The footer, as the theme builds it.
+ *
+ * Three sections, because the block has three: `enabledRows` says which of them
+ * render and each `dst-footer-section` names which one it is. The builder's own
+ * five footer layouts differ in which rows they enable and how the middle row is
+ * divided, which is a real mapping rather than a shorthand for the importer to
+ * interpret.
+ */
+function v20FooterNode(project){
+  var footer=project.footer,design=project.design,statement=cleanText(footer.statement),
+    variant=cleanText(footer.variant)||'editorial',
+    columns=(footer.columns||[]).slice(0,4);
+
+  var attributes={
+    enabledRows:{top:!!statement,middle:true,bottom:true},
+    backgroundColor:design.palette.dark,
+    dsPadding:{top:{type:'default',desktop:'',mobile:''},bottom:{type:'default',desktop:'',mobile:''}},
+    innerContainerWidth:'container',
+    metadata:{name:'Footer'},
+    className:'sbs-footer footer-'+variant
+  };
+
+  var sections=[];
+  if(statement){
+    sections.push(v20Node('ds-blocks/dst-footer-section',{
+      sectionArea:'top',
+      separatorBelow:true,
+      separatorHeight:'1px',
+      separatorColor:'rgba(255,255,255,0.18)',
+      metadata:{name:'Footer Top'}
+    },[
+      v20Node('ds-blocks/dst-footer-slot',{metadata:{name:'Statement'}},[
+        v20Node('ds-blocks/dst-block-title',{text:statement,titleTypography:{tag:'div',preset:'h2-style'},metadata:{name:'Closing statement'}}),
+        cleanText(footer.description)?v20Paragraph(footer.description):null
+      ].filter(Boolean))
+    ]));
+  }
+
+  var middle=[v20Node('ds-blocks/dst-footer-slot',{metadata:{name:'Brand'}},[
+    v20Logo(project,'footer'),
+    v20Node('core/spacer',{height:'2rem'}),
+    v20Node('ds-blocks/dst-social-networks',{
+      socialSource:'custom',
+      layoutDirection:'horizontal',
+      alignDesktop:'flex-start',
+      alignMobile:'center',
+      showSocialTitle:true,
+      socialTitleText:'Follow us',
+      socialIconGap:'1.2rem',
+      socialNetworks:(footer.socials||[]).map(function(entry,index){
+        var network=Array.isArray(entry)?entry[0]:entry&&entry.network,
+          url=Array.isArray(entry)?entry[1]:entry&&entry.url;
+        return {id:'social-'+(index+1),network:cleanText(network||'linkedin'),label:cleanText(network||'LinkedIn'),url:normalizeLink(url||'#')};
+      })
+    })
+  ])];
+
+  columns.forEach(function(column,index){
+    // The first two menu columns take the theme's own secondary and tertiary
+    // locations; anything past those is written as links, because the theme has
+    // no third footer location to put them in.
+    var location=index===0?V20_MENUS.secondary:index===1?V20_MENUS.tertiary:'';
+    middle.push(v20Node('ds-blocks/dst-footer-slot',{metadata:{name:cleanText(column.title)||'Column '+(index+2)}},[
+      v20Node('ds-blocks/dst-block-title',{text:cleanText(column.title)||'',titleTypography:{tag:'div',marginBottom:''}}),
+      location
+        ? v20MenuBlock(location,'footer',{orientation:'vertical',enableMobileAccordion:true})
+        // `c-list-item` has no link attribute — the theme's own footer part puts
+        // link columns in a paragraph, which is also the only way the anchors
+        // survive as anchors.
+        : v20Links(column.links)
+    ]));
+  });
+  sections.push(v20Node('ds-blocks/dst-footer-section',{
+    sectionArea:'middle',
+    columnsTablet:2,
+    columnsMobile:1,
+    rowGap:'3rem',
+    metadata:{name:'Footer Middle'}
+  },middle));
+
+  sections.push(v20Node('ds-blocks/dst-footer-section',{
+    sectionArea:'bottom',
+    columnsTablet:1,
+    columnsMobile:1,
+    rowGap:'2rem',
+    verticalAlign:'center',
+    separatorAbove:true,
+    separatorHeight:'1px',
+    separatorColor:'rgba(255,255,255,0.18)',
+    metadata:{name:'Footer Bottom'}
+  },[
+    v20Node('ds-blocks/dst-footer-slot',{metadata:{name:'Legal'}},[v20Paragraph(footer.legal)]),
+    v20Node('ds-blocks/dst-footer-slot',{textAlign:'right',metadata:{name:'Privacy'}},[
+      v20Links(footer.privacyLinks,' · ')
+    ])
+  ]));
+
+  var node=v20Node('ds-blocks/dst-footer',attributes,sections);
+  node.id='site-footer';
+  node.usage='footer';
+  node.role='footer';
+  node.inverted=true;
+  return node;
+}
+
+/**
+ * The menus the importer has to create, and where each one belongs.
+ *
+ * Carried beside the block trees rather than inside them: a WordPress menu is a
+ * taxonomy term, not block content, and the blocks reference it by the location
+ * it is assigned to.
+ */
+function v20MenuPlan(project){
+  var header=project.header,footer=project.footer,columns=footer.columns||[];
+  var plan=[{
+    location:V20_MENUS.primary,
+    name:'Primary menu',
+    items:(header.nav||[]).map(function(entry){return {label:cleanText(entry[0]),url:normalizeLink(entry[1])}})
+  }];
+  [0,1].forEach(function(index){
+    var column=columns[index];
+    if(!column)return;
+    plan.push({
+      location:index===0?V20_MENUS.secondary:V20_MENUS.tertiary,
+      name:cleanText(column.title)||'Footer menu '+(index+1),
+      items:(column.links||[]).map(function(link){return {label:cleanText(link[0]),url:normalizeLink(link[1])}})
+    });
+  });
+  return plan.filter(function(entry){return entry.items.length});
+}
+
+var headerExportBeforeV20=headerExport;
+headerExport=function(project){
+  V20_ID=0;
+  var node=v20NavigationNode(project);
+  // The shorthand is kept beside the tree, not instead of it: it is what the
+  // 1.0 importer reads, and an older plugin should degrade to the old behaviour
+  // rather than import nothing at all.
+  var legacy=headerExportBeforeV20(project);
+  node.menus=v20MenuPlan(project);
+  /*
+   * The shorthand rides along on the node.
+   *
+   * It is not an attribute and never reaches WordPress, but it is the builder's
+   * own record of what the header holds — the concept round-trip and the QA
+   * scripts read it — and a 1.0 plugin degrades to it rather than importing
+   * nothing at all.
+   */
+  node.nav=legacy.nav;
+  node.legacyShorthand=legacy.nav;
+  node.note='Canonical ds-blocks/dst-navigation tree, matching the theme part. `menus` names the WordPress menu each block location expects.';
+  return node;
+};
+
+var footerExportBeforeV20=footerExport;
+footerExport=function(project){
+  var node=v20FooterNode(project);
+  var legacy=footerExportBeforeV20(project);
+  node.legacyShorthand=legacy.footer;
+  node.note='Canonical ds-blocks/dst-footer tree, matching the theme part.';
+  return node;
+};
+
+/* ---------------------------------------------------------------- *
+ * A stats band with real figures in it
+ *
+ * The writer used to be told to leave every number empty and write "Add the
+ * measured figure" where it belonged, which is the safe answer and an
+ * unpresentable one: three cards reading "Add the measured figure" is a template,
+ * not a concept. The prompt now asks for an illustrative figure in the unit the
+ * industry actually uses, and this is the net under it — for the built-in planner,
+ * for a model that ignores the instruction, and for the demo content nobody has
+ * run the writer over yet.
+ *
+ * Deliberately narrow. A unit is taken from the brief's own words and the
+ * magnitude is round and obviously a placeholder, and nothing here produces a
+ * figure that reads as an audited claim: no percentages of satisfaction, no
+ * review scores, no revenue, no headcount, no years trading. The band says in
+ * its own body that the figures are illustrative.
+ * ---------------------------------------------------------------- */
+
+/*
+ * Units, by what the brief talks about. First match wins, so the more specific
+ * trades come before the general ones.
+ */
+var V19_UNITS=[
+  {terms:['motorcycle','motorbike','bike','rental','tour','ride','fleet','vehicle','car','truck','logistics','delivery','courier'],figures:['2,000 km','48 hrs','12 routes']},
+  {terms:['dental','clinic','medical','health','patient','therapy','care','veterinar'],figures:['3 clinics','24 hrs','8 treatments']},
+  {terms:['restaurant','cafe','food','menu','kitchen','catering','bakery','brewery'],figures:['40 covers','12 dishes','3 sittings']},
+  {terms:['construction','build','contractor','roofing','plumbing','electrical','install','renovation','landscap'],figures:['120 projects','14 sites','48 hrs']},
+  {terms:['law','legal','accounting','tax','advisory','consult','audit','compliance'],figures:['3 practices','48 hrs','9 sectors']},
+  {terms:['saas','software','platform','app','api','data','cloud','engineering','developer'],figures:['99.9% uptime','< 200 ms','12 integrations']},
+  {terms:['school','course','training','academy','education','learning','student'],figures:['24 courses','12 weeks','6 cohorts']},
+  {terms:['property','estate','realty','housing','architect','interior'],figures:['40 properties','3 regions','18 months']},
+  {terms:['retail','shop','store','ecommerce','brand','product','merch'],figures:['400 lines','48 hrs','9 markets']},
+  {terms:['travel','hotel','hospitality','resort','tourism','guest'],figures:['3 languages','24 hrs','40 rooms']}
+];
+var V19_UNITS_FALLBACK=['3 services','48 hrs','12 markets'];
+
+/** The illustrative figures this brief's own vocabulary suggests. */
+function v19StatsFigures(){
+  var brief=state.project.brief||{},
+    corpus=[brief.industry,brief.offer,brief.goal,brief.keywords,brief.audience,brief.projectName,brief.clientName]
+      .join(' ').toLowerCase();
+  for(var i=0;i<V19_UNITS.length;i++){
+    for(var t=0;t<V19_UNITS[i].terms.length;t++){
+      if(corpus.indexOf(V19_UNITS[i].terms[t])>=0)return V19_UNITS[i].figures;
+    }
+  }
+  return V19_UNITS_FALLBACK;
+}
+
+/** True when a value is an instruction to the strategist rather than a figure. */
+function v19IsInstruction(value){
+  var text=String(value||'').trim();
+  if(!text)return true;
+  // A figure contains a digit. "Add the measured figure", "TBC", "Metric" do not.
+  if(/\d/.test(text))return false;
+  return true;
+}
+
+var V19_STATS_NOTE='These figures are illustrative for the concept — confirm them before publishing.';
+
+var v3ApplyItemsBeforeV19=v3ApplyItems;
+v3ApplyItems=function(section,items){
+  var result=v3ApplyItemsBeforeV19(section,items);
+  if(!section||section.family!=='stats')return result;
+  var figures=v19StatsFigures(),list=section.content&&section.content.items;
+  if(!Array.isArray(list))return result;
+  list.forEach(function(item,index){
+    if(v19IsInstruction(item.value))item.value=figures[index%figures.length];
+  });
+  // Said once, on the band itself, rather than left for somebody to notice.
+  var body=cleanText(section.content.body||'');
+  if(body&&!/illustrative|demonstration/i.test(body))section.content.body=body+' '+V19_STATS_NOTE;
+  else if(!body)section.content.body=V19_STATS_NOTE;
+  return result;
+};
+
+/* ================================================================== *
+ * v18 — A band's text tone follows its overlay, and a logo rail is editable
+ *
+ * Two things the pattern library brought with it from the site it was exported
+ * from, and one thing the builder was deciding on the wrong evidence.
+ *
+ * **The tone.** A hero's `is-style-colors-inverted` came from the family preset —
+ * every hero is inverted, because a hero is usually a photograph. The overlay
+ * came from the pattern, and five of them fade something *pale* across the band
+ * and put the headline in it. The band class carries `!important` colour rules,
+ * so it won the argument the heading renderer had already settled correctly:
+ * white type on a near-white ground. The overlay is the fact and the preset is a
+ * guess, so the class now follows the overlay.
+ *
+ * **The logo rail.** `marquee.images` listed seven real client logos by URL from
+ * the exporting site. They are gone from the data; what remains is a set of
+ * inline placeholder marks drawn in `currentColor`, and a panel for putting real
+ * logos in — which is what a logo rail needs and did not have.
+ * ================================================================== */
+
+/**
+ * The overlay a band will actually render with.
+ *
+ * Not the pattern's stored value: `syncSectionNode` replaces a banner's overlay
+ * with the builder's own, and the fidelity surface then re-applies whatever it
+ * captured. Reading the attribute after both have run is the only way to see
+ * what the visitor gets.
+ */
+function v18BannerOverlay(section){
+  var node=section&&section.node;
+  if(!node)return null;
+  var banner=node.component==='ds-blocks/dst-banner'?node:firstNode(node,'ds-blocks/dst-banner');
+  if(!banner)return null;
+  var attrs=banner.attributes||{};
+  if(attrs.backgroundOverlayEnabled===false)return null;
+  var value=cleanCssValue(attrs.backgroundOverlay);
+  if(!value)return null;
+  var opacity=Number(attrs.backgroundOverlayOpacity);
+  return {value:value,opacity:Number.isFinite(opacity)?opacity:1};
+}
+
+/*
+ * How opaque a light overlay has to be before the words sit on it.
+ *
+ * A white wash at a tenth is a photograph with a haze over it, and the copy is
+ * still on the photograph — dark type there is a guess about a picture nobody
+ * has seen. At about half, the wash is the ground. Below the threshold the band
+ * keeps its inverted preset and the rendered-legibility pass has the last word.
+ */
+var V18_LIGHT_OPACITY=.45;
+
+/**
+ * The tone a banner section should carry, or null to leave the preset alone.
+ *
+ * Returns true for "needs light text", false for "needs dark text".
+ */
+function v18BannerTone(section){
+  var overlay=v18BannerOverlay(section);
+  if(!overlay)return null;
+  var dark=v2SurfaceTone(overlay.value,state.project);
+  if(dark==null)return null;
+  if(dark)return true;
+  return overlay.opacity>=V18_LIGHT_OPACITY?false:null;
+}
+
+/*
+ * The band's tone class, corrected.
+ *
+ * `sectionClasses` builds it from `layout.inverted`, and the tone wrapper
+ * appends the standard token when that is false. Both are replaced here for a
+ * banner whose overlay says otherwise, so the class the `!important` rules hang
+ * off agrees with the heading renderer instead of overruling it.
+ */
+var sectionClassesBeforeV18=sectionClasses;
+sectionClasses=function(section){
+  var classes=sectionClassesBeforeV18(section),tone=v18BannerTone(section);
+  if(tone==null)return classes;
+  var wanted=tone?'is-style-colors-inverted':'is-style-colors-standard';
+  var stripped=classes.split(/\s+/).filter(function(name){
+    return name&&name!=='is-style-colors-inverted'&&name!=='is-style-colors-standard';
+  });
+  stripped.push(wanted);
+  return stripped.join(' ');
+};
+
+/*
+ * The band's ground class follows too.
+ *
+ * `sbs-band-dark` paints the fallback colour behind the photograph and is chosen
+ * from the same preset. A pale-overlay hero given a dark ground flashes dark
+ * before the image loads and shows dark at the edges of a contained one.
+ */
+var sectionBgClassBeforeV18=sectionBgClass;
+sectionBgClass=function(section,index){
+  var base=sectionBgClassBeforeV18(section,index),tone=v18BannerTone(section);
+  if(tone==null||tone)return base;
+  return base==='sbs-band-dark'?'sbs-band-paper':base;
+};
+
+/* ---------------------------------------------------------------- *
+ * The logo rail
+ * ---------------------------------------------------------------- */
+
+/** An inline placeholder mark, or a real logo, or nothing at all. */
+function v18RenderLogo(entry){
+  if(!entry||typeof entry!=='object')return '';
+  var alt=entry.alt||entry.caption||'Client logo';
+  if(typeof entry.svg==='string'&&entry.svg){
+    // Inline rather than an `<img src="data:…">`: the mark is drawn in
+    // `currentColor`, so it inherits the band's text colour and reads on a dark
+    // overlay and a light one without shipping two sets of files.
+    return '<span class="dst-marquee__img is-placeholder" role="img" aria-label="'+escAttr(alt)+'">'+entry.svg+'</span>';
+  }
+  var media=v2MediaObject(entry);
+  if(media&&media.src)return '<img class="dst-marquee__img" src="'+escAttr(media.src)+'" alt="'+escAttr(media.alt||alt)+'">';
+  return '<span class="dst-marquee__logo">'+esc(entry.label||alt)+'</span>';
+}
+
+var renderNodeBeforeV18=renderNode;
+renderNode=function(node,ctx){
+  if(!node||node.component!=='ds-blocks/marquee')return renderNodeBeforeV18(node,ctx);
+  var attrs=node.attributes||{},logos=(Array.isArray(attrs.images)?attrs.images:[]).filter(Boolean);
+  if(!logos.length)logos=v18PlaceholderLogos();
+  // Twice, so the track can scroll without a gap appearing behind it.
+  var run=logos.concat(logos);
+  return '<div class="dst-marquee" data-dst-component="'+escAttr(node.component)+'">'+
+    '<div class="dst-marquee__track" style="--dur:'+(Number(attrs.speed)||28)+'s">'+
+    run.map(v18RenderLogo).join('')+'</div></div>';
+};
+
+/**
+ * The placeholder set, for a rail whose logos have all been removed.
+ *
+ * Read out of the library rather than written twice: the same six marks the
+ * patterns ship, so the rail never renders empty and never invents a seventh.
+ */
+var v18PlaceholderCache=null;
+function v18PlaceholderLogos(){
+  if(v18PlaceholderCache)return v18PlaceholderCache;
+  var found=null;
+  DATA.patterns.forEach(function(pattern){
+    if(found)return;
+    (function walk(node){
+      if(found||!node)return;
+      if(node.component==='ds-blocks/marquee'){
+        var images=(node.attributes||{}).images;
+        if(Array.isArray(images)&&images.length&&images[0].svg)found=deepClone(images);
+      }
+      (node.children||[]).forEach(walk);
+    })(pattern.tree);
+  });
+  v18PlaceholderCache=found||[];
+  return v18PlaceholderCache;
+}
+
+/** The first marquee in a module, if it has one. */
+function v18Marquee(section){
+  if(!section||!section.node)return null;
+  return section.node.component==='ds-blocks/marquee'?section.node:firstNode(section.node,'ds-blocks/marquee');
+}
+
+function v18Logos(section){
+  var node=v18Marquee(section);
+  if(!node)return null;
+  node.attributes=node.attributes||{};
+  if(!Array.isArray(node.attributes.images))node.attributes.images=[];
+  return node.attributes.images;
+}
+
+/**
+ * The logo panel, shown only on a module that has a rail.
+ *
+ * A URL each, because that is what a logo is: a file somebody has already
+ * exported. An empty row is a placeholder mark rather than a hole, so a rail
+ * being filled in one logo at a time never looks broken halfway through.
+ */
+function v18LogoPanel(section){
+  var logos=v18Logos(section);
+  if(!logos)return '';
+  var rows=logos.map(function(entry,index){
+    var media=v2MediaObject(entry),src=media&&media.src||'';
+    return '<div class="repeat-row">'+
+      '<input data-logo-index="'+index+'" data-logo-key="src" value="'+escAttr(src)+'" placeholder="https://… .svg or .png">'+
+      '<input data-logo-index="'+index+'" data-logo-key="alt" value="'+escAttr(entry.alt||'')+'" placeholder="Company name">'+
+      '<button class="mini-btn danger" data-logo-remove="'+index+'" title="Remove this logo">'+ICONS.trash+'</button>'+
+    '</div>';
+  }).join('');
+  return fidelityGroup('Logos in the rail','An SVG or PNG each — a transparent SVG reads best over a photograph. Leave the address empty to keep the placeholder mark, which is drawn in the band’s own text colour.',
+    '<div class="repeater full">'+rows+
+      '<button class="add-row" data-logo-add>Add a logo</button>'+
+    '</div>');
+}
+
+var renderMediaEditorBeforeV18=renderMediaEditor;
+renderMediaEditor=function(section){
+  return renderMediaEditorBeforeV18(section)+v18LogoPanel(section);
+};
+
+byId('editorInner').addEventListener('input',function(event){
+  var input=event.target;
+  if(!input||!input.dataset||input.dataset.logoIndex==null)return;
+  var section=currentSection(),logos=section?v18Logos(section):null;
+  if(!logos)return;
+  var entry=logos[Number(input.dataset.logoIndex)];
+  if(!entry)return;
+  inputCheckpoint();
+  if(input.dataset.logoKey==='alt')entry.alt=input.value;
+  else{
+    var url=cleanText(input.value);
+    if(url){entry.src=url;entry.url=url;delete entry.svg;delete entry.placeholder}
+    // Cleared: back to the placeholder mark rather than an empty gap in the rail.
+    else{delete entry.src;delete entry.url;var marks=v18PlaceholderLogos();var mark=marks[Number(input.dataset.logoIndex)%(marks.length||1)];if(mark){entry.svg=mark.svg;entry.placeholder=true;if(!entry.alt)entry.alt=mark.alt}}
+  }
+  queueSave();
+  v12QueuePaint(section);
+});
+
+byId('editorInner').addEventListener('click',function(event){
+  var add=event.target.closest('[data-logo-add]'),remove=event.target.closest('[data-logo-remove]');
+  if(!add&&!remove)return;
+  var section=currentSection(),logos=section?v18Logos(section):null;
+  if(!logos)return;
+  inputCheckpoint();
+  if(remove)logos.splice(Number(remove.dataset.logoRemove),1);
+  else{
+    var marks=v18PlaceholderLogos(),mark=marks[logos.length%(marks.length||1)]||{};
+    logos.push({svg:mark.svg||'',alt:mark.alt||'Client logo placeholder',placeholder:true});
+  }
+  queueSave();
+  renderEditor();
+  v12QueuePaint(section);
+  announce(remove?'Logo removed.':'Logo added — paste its address, or leave the placeholder.');
+});
+
+/*
+ * An empty media slot takes the project's own imagery.
+ *
+ * The library's cards used to name a file on the site the patterns were exported
+ * from, which won over the imagery the builder found for *this* brief simply by
+ * being present. Those files are gone and the slots are not: an empty `media`
+ * object says "this card has a picture and does not have a file yet". Filling it
+ * here, at sync, means the preview, the audit and the export all see the same
+ * picture — the one the imagery pass placed, or the labelled placeholder that
+ * stands in until it runs.
+ */
+var V18_MEDIA_SLOTS=['ds-blocks/c-card-item','ds-blocks/c-media','ds-blocks/l-content-2','ds-blocks/c-accordion','ds-blocks/c-accordion-item','ds-blocks/dst-wrapper','ds-blocks/ds-columns','ds-blocks/dst-banner','ds-blocks/c-cards','ds-blocks/c-list'];
+function v18FillEmptySlots(section){
+  if(!section||!section.node)return;
+  var index=0;
+  walkNode(section.node,function(node){
+    if(V18_MEDIA_SLOTS.indexOf(node.component)<0)return;
+    var attrs=node.attributes=node.attributes||{};
+    var slot=index++;
+    var chosen=null;
+    if('media' in attrs&&!(attrs.media&&typeof attrs.media==='object'&&Object.keys(attrs.media).length)){
+      chosen=mediaChoice(section,slot);
+      if(chosen)attrs.media=asMedia(chosen);
+    }
+    // A photo-backed band says so with the list, not with what is in it.
+    if(Array.isArray(attrs.backgroundImage)&&!attrs.backgroundImage.length){
+      chosen=chosen||mediaChoice(section,slot);
+      if(chosen)attrs.backgroundImage=[asMedia(chosen)];
+    }
+  });
+}
+
+var syncSectionNodeBeforeV18=syncSectionNode;
+syncSectionNode=function(section){
+  syncSectionNodeBeforeV18(section);
+  v18FillEmptySlots(section);
+};
+
+/*
+ * A card grid with no column count.
+ *
+ * `fidelityNumber(undefined, 1, 6)` is one column, so a thirteen-card pattern
+ * rendered as thirteen full-width bands. The pattern data now states the count,
+ * and this is the net under it for a pattern added later: what the grid holds,
+ * capped at the three a card is designed around.
+ */
+var fidelityEnsureSectionBeforeV18=fidelityEnsureSection;
+fidelityEnsureSection=function(section){
+  var fidelity=fidelityEnsureSectionBeforeV18(section);
+  if(!fidelity||!fidelity.cards)return fidelity;
+  var cards=fidelityNode(section,['ds-blocks/c-cards']),attrs=cards&&cards.attributes||{};
+  if(Number(attrs.columnsDesktop)||Number(attrs.columns))return fidelity;
+  if(fidelity.cards.desktop>1)return fidelity;
+  var held=(cards&&cards.children||[]).filter(function(child){return child.component==='ds-blocks/c-card-item'}).length;
+  if(held>1)fidelity.cards.desktop=Math.min(3,held);
+  return fidelity;
+};
+
+/* ================================================================== *
+ * v17 — A document is attached, not pasted
+ *
+ * Dropping the client's PDF used to tip its whole text into the brief textarea.
+ * That is the wrong place for it twice over: three pages of somebody else's
+ * document buries the paragraph the strategist wrote in a box they are meant to
+ * keep editing, and it makes a *document* look like something they typed.
+ *
+ * So a document is now attached. It shows as its own name with its kind and its
+ * length, next to a button that removes it. The words never enter the textarea —
+ * they go to the brain, which reads the paragraph and every attachment together
+ * (`briefSourceText`), so one press of "Read my brief and build 3 concepts" sees
+ * the lot.
+ *
+ * Which means an attachment on its own is a brief: the button's gate, the
+ * character counter and the stale-concepts check all measure the paragraph and
+ * the attachments together, so a client who sent a PDF and nothing else does not
+ * have to retype it to get started.
+ * ================================================================== */
+
+/*
+ * A page with a corner turned down, and a mark that says which kind of document
+ * it is. The kinds are the ones `briefDocumentKind` returns, so the icon and the
+ * label cannot describe a kind the reader does not produce.
+ */
+var V17_SHEET='<path d="M6 2h7l5 5v15H6z"/><path d="M13 2v5h5"/>';
+var V17_ICONS={
+  pdf:V17_SHEET+'<path d="M9 13v5M9 13h1.6a1.2 1.2 0 0 1 0 2.4H9M13.4 18v-5h1.2a1.6 1.6 0 0 1 0 5z"/>',
+  docx:V17_SHEET+'<path d="M9 13h6M9 16h6M9 19h3"/>',
+  rtf:V17_SHEET+'<path d="M9 13h6M9 16h4"/>',
+  plain:V17_SHEET+'<path d="M9 12h6M9 15h6M9 18h4"/>'
+};
+var V17_KIND_LABELS={pdf:'PDF',docx:'Word document',rtf:'Rich text',plain:'Text file'};
+
+function v17Icon(kind){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" '+
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+
+    (V17_ICONS[kind]||V17_ICONS.plain)+'</svg>';
+}
+
+/** The attachments, as chips: an icon, the file name, and a way to take it off. */
+function v17DocumentChips(attachments){
+  var list=attachments||[];
+  if(!list.length)return '';
+  return '<ul class="brief-files" data-brief-files>'+list.map(function(file){
+    var kind=V17_KIND_LABELS[file.kind]||'Document',
+      size=Number(file.characters)||0;
+    return '<li class="brief-file" data-brief-file-id="'+escAttr(file.id)+'">'+
+      '<span class="brief-file__icon">'+v17Icon(file.kind)+'</span>'+
+      '<span class="brief-file__body">'+
+        '<b title="'+escAttr(file.name)+'">'+esc(file.name)+'</b>'+
+        '<span>'+esc(kind)+(size?' · '+size.toLocaleString()+' characters read':'')+'</span>'+
+      '</span>'+
+      '<button type="button" class="brief-file__remove" data-brief-file-remove="'+escAttr(file.id)+'" '+
+        'aria-label="Remove '+escAttr(file.name)+' from the brief">&times;</button>'+
+    '</li>';
+  }).join('')+'</ul>';
+}
+
+/** Whatever the current builder has attached. */
+function v17Attachments(){
+  return typeof briefBrainFeature.briefAttachments==='function'
+    ? briefBrainFeature.briefAttachments(state.project)
+    : [];
+}
+
+/*
+ * The drop zone, with the attachments under it.
+ *
+ * The panel passes its own list so the simple builder's re-render and the
+ * advanced builder's panel show the same thing from the same markup; a caller
+ * that passes nothing gets the current project's, which is what the advanced
+ * panel wants.
+ */
+var v11BriefDropZoneBeforeV17=v11BriefDropZone;
+v11BriefDropZone=function(attachments){
+  var list=attachments===undefined?v17Attachments():attachments;
+  return v11BriefDropZoneBeforeV17()+v17DocumentChips(list);
+};
+
+/** Removes one attachment, and says which. */
+function v17DetachDocument(id){
+  var simple=briefBrainFeature.ensureSimpleState(state.project);
+  if(!simple||!Array.isArray(simple.briefFiles))return;
+  var gone=simple.briefFiles.filter(function(file){return file.id===id})[0];
+  if(!gone)return;
+  simple.briefFiles=simple.briefFiles.filter(function(file){return file.id!==id});
+  queueSave();
+  renderEditor();
+  announce(gone.name+' removed from the brief.');
+}
+
+document.addEventListener('click',function(event){
+  var trigger=event.target.closest&&event.target.closest('[data-brief-file-remove]');
+  if(!trigger)return;
+  event.preventDefault();
+  v17DetachDocument(trigger.dataset.briefFileRemove);
+});
+
+/**
+ * Reading dropped files into attachments.
+ *
+ * The document's own text is stored on the attachment rather than merged into
+ * anything, which is what lets it be removed again cleanly — and what keeps the
+ * strategist's paragraph theirs.
+ *
+ * In the advanced builder the individual brief fields are still filled from the
+ * document, because that builder is unusable without them. What has changed is
+ * that the internal note is left alone: it used to be overwritten with the whole
+ * document, which is the same "pasted into a textarea" problem in a different box.
+ */
+v11ReadBriefFiles=async function(files){
+  var list=Array.prototype.slice.call(files||[]);
+  if(!list.length)return;
+  if(list.length===1&&await v11IsConceptJson(list[0])){v4ImportConcept(list[0]);return}
+  announce(list.length===1?'Reading '+list[0].name+'…':'Reading '+list.length+' documents…');
+
+  var result;
+  try{
+    // No `existing`: an attachment is its own document, not an addition to a
+    // paragraph, and the per-document limit is what matters here.
+    result=await readBriefDocuments(list,{});
+  }catch(error){
+    announce('Those files could not be read.');
+    return;
+  }
+  if(!result.read.length){
+    announce(v11SkippedMessage(result.skipped.length?result.skipped:[{name:'That file',reason:'it held no text'}]));
+    return;
+  }
+
+  var simple=briefBrainFeature.ensureSimpleState(state.project);
+  simple.briefFiles=Array.isArray(simple.briefFiles)?simple.briefFiles:[];
+  result.read.forEach(function(entry){
+    var text=String(entry.text||'');
+    // A file dropped twice is the same attachment, not two.
+    simple.briefFiles=simple.briefFiles.filter(function(file){return file.name!==entry.name});
+    simple.briefFiles.push({
+      id:uid('brief-file'),
+      name:entry.name,
+      kind:entry.kind||'plain',
+      characters:text.length,
+      text:text
+    });
+  });
+  queueSave();
+
+  var names=result.read.map(function(entry){return entry.name}).join(', ');
+  var tail=result.skipped.length?' '+v11SkippedMessage(result.skipped):'';
+  var attached=result.read.length===1
+    ? names+' attached to the brief.'
+    : result.read.length+' documents attached to the brief: '+names+'.';
+
+  if(v4IsSimple()){
+    goStep(0);
+    renderEditor();
+    announce(attached+' Read the brief to build the three concepts.'+tail);
+    return;
+  }
+
+  // The advanced builder needs the fields themselves, so the attachment's words
+  // still go through the splitter — but only the fields are written.
+  var source=typeof briefBrainFeature.briefSourceText==='function'
+    ? briefBrainFeature.briefSourceText(state.project)
+    : result.text;
+  var expanded=typeof briefBrainFeature.expandBriefForImport==='function'
+    ? await briefBrainFeature.expandBriefForImport(source)
+    : null;
+  var split=!!(expanded&&!expanded.error);
+  if(split)mutate(function(){v4ApplyBriefFields(expanded,{})},{message:''});
+  goStep(0);
+  renderEditor();
+  announce(split
+    ? attached+' The fields below were filled in from it — check them before continuing.'+tail
+    : attached+' Splitting it into the fields needs the brief server, so fill them in yourself.'+tail);
+};
+
+/* ================================================================== *
+ * v16 — Every control in the module editor lands in the export
+ *
+ * A sweep that drives every binding the module editor renders, for every family,
+ * in both views, and checks the exported artifact afterwards found controls that
+ * changed nothing at all. Each is fixed here at its own cause rather than hidden:
+ *
+ *   Content width on a banner   A banner is full-bleed by definition, so the
+ *                               export pins its container to `full` — and the
+ *                               control was writing to the pinned value. The
+ *                               thing a banner actually has is an *inner*
+ *                               container, which the preview already reads.
+ *   Hero image treatment        A split hero was a class in the preview and
+ *                               nothing in the export. DST already has the
+ *                               attribute: the background layer's own `width`.
+ *   Supporting text alignment   No DST attribute exists for it, so it moved the
+ *                               preview and could never move WordPress. A
+ *                               control that makes the preview lie is worse than
+ *                               no control.
+ *   Custom image / alt text     Offered on families whose pattern renders no
+ *                               media slot, where there is nothing to change.
+ *   List geometry               Offered on a module whose list had already been
+ *                               rebuilt away, from a stale target recorded
+ *                               before the rebuild.
+ * ================================================================== */
+
+/** The banner a module is rooted in, if it is rooted in one. */
+function v16Banner(section){
+  if(!section||!section.node)return null;
+  return section.node.component==='ds-blocks/dst-banner'?section.node
+    :firstNode(section.node,'ds-blocks/dst-banner');
+}
+
+/*
+ * Content width, on a banner.
+ *
+ * `layout.container` is what the section band is; `innerContainerWidth` is how
+ * wide the words are inside it. For every other component those are the same
+ * control, which is why one binding drives both.
+ */
+var V16_INNER={alt:'container-alt',default:'container',wide:'container-wide',full:'container-fluid'};
+function v16ApplyContainer(section){
+  var banner=v16Banner(section);
+  if(!banner)return false;
+  banner.attributes=banner.attributes||{};
+  banner.attributes.innerContainerWidth=V16_INNER[section.layout&&section.layout.container]||'container';
+  return true;
+}
+
+/*
+ * Hero image treatment.
+ *
+ * A split hero is a background that occupies part of the band, and the DST
+ * background layer says so with its own `width` — the registered patterns write
+ * `"width": "auto"` there. So the treatment is a real exported attribute rather
+ * than a class only the preview understands.
+ */
+function v16ApplyHeroMedia(section){
+  var banner=v16Banner(section);
+  if(!banner)return false;
+  banner.attributes=banner.attributes||{};
+  // `syncSectionNode` writes the chosen media as one object; a pattern from the
+  // library writes a list of layers. Both are a background.
+  var raw=banner.attributes.backgroundImage,
+    layers=Array.isArray(raw)?raw:(raw&&typeof raw==='object'?[raw]:[]);
+  if(!layers.length)return false;
+  var mode=(section.layout&&section.layout.heroMediaMode)||'full',
+    width=mode==='full'?'auto':'55%';
+  layers.forEach(function(layer){
+    if(!layer||typeof layer!=='object')return;
+    layer.desktop=Object.assign({},layer.desktop,{width:width});
+    // The phone always gets the whole band: a 55% background beside 45% of
+    // nothing is not a composition, it is a gap.
+    layer.mobile=Object.assign({},layer.mobile,{width:'auto'});
+  });
+  return true;
+}
+
+var syncSectionNodeBeforeV16=syncSectionNode;
+syncSectionNode=function(section){
+  syncSectionNodeBeforeV16(section);
+  if(!section)return;
+  v16ApplyContainer(section);
+  v16ApplyHeroMedia(section);
+  v16PruneFidelity(section);
+};
+
+/*
+ * A fidelity slice for something the module no longer has.
+ *
+ * The slices are built from the pattern's pristine tree, and several families
+ * then rebuild part of that tree from their own content model — the tabs family
+ * replaces its panels wholesale. A slice recorded before the rebuild points at a
+ * node that no longer exists, so its panel rendered controls with nowhere to
+ * land. Pruning at sync means the panel is drawn from what the module *is*.
+ */
+var V16_SLICES=[['columns',['ds-blocks/ds-columns']],['cards',['ds-blocks/c-cards']],['list',['ds-blocks/c-list']]];
+function v16PruneFidelity(section){
+  var fidelity=section.fidelity;
+  if(!fidelity)return;
+  V16_SLICES.forEach(function(entry){
+    var key=entry[0];
+    if(!fidelity[key])return;
+    if(!fidelityNode(section,entry[1]))fidelity[key]=null;
+  });
+}
+
+/*
+ * Supporting text alignment, withdrawn.
+ *
+ * `c-heading` has exactly one alignment pair — `alignment` and
+ * `alignmentMobile` — and the builder's separate content alignment had no
+ * attribute to become. It moved the preview and vanished on export, so a page
+ * approved with centred supporting text arrived left-aligned. The heading
+ * alignment, which does export, still moves both.
+ */
+var v3ResponsiveEditorBeforeV16=null;
+var renderLayoutEditorExtendedBeforeV16=renderLayoutEditorExtended;
+renderLayoutEditorExtended=function(section){
+  var html=renderLayoutEditorExtendedBeforeV16(section);
+  return v16DropContentAlign(html);
+};
+function v16DropContentAlign(html){
+  // Removed from the rendered panel rather than from the six call sites that
+  // build it, so the two fields cannot come back through a different one.
+  return String(html).replace(/<div class="field(?: full)?">(?:(?!<\/div><div class="field)[\s\S])*?data-bind="setting\.[^"]*\.contentAlign(?:Mobile)?"[\s\S]*?<\/select><\/div>/g,'');
+}
+
+/*
+ * The media fields, only where there is media.
+ *
+ * `Custom image URL` and `Image alt text` write into `content.media`, which six
+ * families never render — their patterns have no media slot — so the fields
+ * changed the project and nothing else. The slot list above them is already
+ * derived from the pattern; these two now are as well.
+ */
+var renderMediaEditorBeforeV16=renderMediaEditor;
+renderMediaEditor=function(section){
+  var html=renderMediaEditorBeforeV16(section);
+  if(!section)return html;
+  var slots=[];
+  try{slots=v5SectionSlots(section)||[]}catch(error){slots=[]}
+  if(slots.length)return html;
+  // Cut from the marker the base emits to the end of the base's own output —
+  // later layers append their slot editors after it, and matching inside the
+  // grid caught one field and left its neighbour behind.
+  var mark=html.indexOf('data-bind="section.'+section.id+'.customMedia"');
+  if(mark<0)return html;
+  var open=html.lastIndexOf('<div class="field-grid"',mark);
+  // The grid holds both fields, and the alt text is the second — so the close is
+  // measured from there. Measuring from the first field cut one and left the
+  // other, which is how the sweep caught this.
+  var alt=html.indexOf('data-bind="section.'+section.id+'.mediaAlt"');
+  var close=html.indexOf('</div></div>',alt>=0?alt:mark);
+  if(open<0||close<0)return html;
+  return html.slice(0,open)
+    +'<div class="panel-note">This pattern renders no image or video slot, so there is nothing here to replace. Switch the pattern, or pick one that carries media.</div>'
+    +html.slice(close+'</div></div>'.length);
+};
+
+/* ================================================================== *
+ * v15 — The production form is a decision, not a constant
+ *
+ * Ten patterns in the library embed `gravityforms/form`, and every one of them
+ * carries `formId: "1"` — captured from the DST staging site, exempt from the
+ * registry filter, and passed straight through to WordPress. On the target site
+ * form 1 is a different form or none at all, so the contact band imports empty.
+ *
+ * The id is the one thing about a form that has to be said out loud, and until
+ * now there was nowhere to say it. So the contact editor asks, the preview slot
+ * shows what it was told, and the export carries the answer.
+ * ================================================================== */
+
+/** The first Gravity Forms node in a module, or null. */
+function v15FormNode(section){
+  return section&&section.node?firstNode(section.node,'gravityforms/form'):null;
+}
+
+function v15FormAttrs(section){
+  var node=v15FormNode(section);
+  if(!node)return null;
+  node.attributes=node.attributes||{};
+  return node.attributes;
+}
+
+/**
+ * The form panel, shown only where there is a form.
+ *
+ * A control for something the module does not have is worse than no control:
+ * it invites a change that cannot land anywhere.
+ */
+function v15FormPanel(section){
+  var attrs=v15FormAttrs(section);
+  if(!attrs)return '';
+  var id=attrs.formId==null?'':String(attrs.formId);
+  return fidelityGroup('Production form','The Gravity Forms entry this band submits to. The id has to match the form on the site you are importing into — the pattern library ships the staging id, which is almost never the right one.',
+    field('Gravity Forms id','form.'+section.id+'.formId',id,{help:'Find it in WordPress under Forms — the number in the list, or in the shortcode.'})+
+    field('Show the form title','form.'+section.id+'.title',attrs.title?'true':'false',{type:'select',options:[{value:'false',label:'No — the band already has a heading'},{value:'true',label:'Yes'}]})+
+    field('Field accent colour','form.'+section.id+'.inputPrimaryColor',attrs.inputPrimaryColor||'',{type:'color',help:'Borders and focus rings on the form fields.'})
+  );
+}
+
+var renderContentEditorBeforeV15=renderContentEditor;
+renderContentEditor=function(section){
+  return renderContentEditorBeforeV15(section)+v15FormPanel(section);
+};
+
+var updateBindingBeforeV15=updateBinding;
+updateBinding=function(path,value,input){
+  var match=/^form\.([^.]+)\.([a-zA-Z]+)$/.exec(String(path||''));
+  if(!match)return updateBindingBeforeV15(path,value,input);
+  var section=v6Section(match[1]),attrs=section?v15FormAttrs(section):null;
+  if(!attrs)return;
+  inputCheckpoint();
+  var key=match[2];
+  // The id is a number in the shortcode and a string in the block attribute;
+  // WordPress accepts either, and keeping the digits verbatim means a pasted
+  // "12" does not become 12 and then "12" again on the way out.
+  if(key==='title')attrs.title=v2Bool(value);
+  else if(key==='formId')attrs.formId=String(value).replace(/[^0-9]/g,'');
+  else attrs[key]=value;
+  queueSave();
+  v12QueuePaint(section);
+};
+
+/*
+ * The slot names the form it will submit to.
+ *
+ * Without this the control would be invisible in the preview — a field you can
+ * change with nothing to show for it, which is the same as a field that does
+ * not work.
+ */
+var renderNodeBeforeV15=renderNode;
+renderNode=function(node,ctx){
+  var html=renderNodeBeforeV15(node,ctx);
+  if(!node||node.component!=='gravityforms/form')return html;
+  var id=String((node.attributes||{}).formId||'').trim();
+  return html.replace('<b>Production form slot</b>',
+    '<b>'+esc(id?'Form '+id:'No form chosen')+'</b>');
+};
+
+/* ================================================================== *
+ * v14 — The catalogue agrees with the patterns it describes
+ *
+ * Each pattern ships a description of itself: `counts` of what it repeats,
+ * `flags` for what it can do, a one-line `look`, and the component registry the
+ * export validates against. All four had drifted away from the trees, and none
+ * of it is cosmetic — `v8Score` reads `flags` and `counts` to choose which
+ * pattern a concept gets, and `normalizeExportNode` uses the registry to decide
+ * which attributes are real.
+ *
+ * Measured before this layer existed: `flags.media` contradicted the tree on 92
+ * patterns, `counts` on 101, and ten `look` strings named a number the pattern
+ * does not contain. The default hero declared itself photograph-free while
+ * carrying a background image, so every concept that asked for dominant imagery
+ * scored it *down*.
+ *
+ * The fix is to stop shipping the description and derive it, at boot, from the
+ * tree that will actually be rendered. Drift then cannot come back: there is one
+ * source of truth and it is the pattern itself.
+ * ================================================================== */
+
+/** Every node of a pattern tree, in document order. */
+function v14Nodes(node,out){
+  out=out||[];
+  if(!node)return out;
+  out.push(node);
+  var children=node.children||[];
+  for(var i=0;i<children.length;i++)v14Nodes(children[i],out);
+  return out;
+}
+
+/*
+ * Components that put a picture on the page whether or not the pattern file
+ * happened to carry one. A banner always renders a background — the renderer
+ * falls back to the section's own choice — and the three media blocks exist to
+ * hold an image. This is what "carries photography" has to mean, because it is
+ * what the visitor sees.
+ */
+var V14_MEDIA_COMPONENTS=['ds-blocks/dst-banner','ds-blocks/dst-banner-slider','ds-blocks/dst-banner-slide',
+  'ds-blocks/c-media','ds-blocks/l-content-2','ds-blocks/marquee'];
+var V14_MEDIA_ATTRIBUTES=['backgroundImage','media','images','video'];
+
+function v14Filled(value){
+  if(!value)return false;
+  if(Array.isArray(value))return value.length>0;
+  if(typeof value==='object')return Object.keys(value).length>0;
+  return true;
+}
+
+/** What a pattern repeats, counted off its own tree. */
+function v14Counts(nodes){
+  var counts={cards:0,listItems:0,accordionItems:0,tabs:0,columns:0};
+  for(var i=0;i<nodes.length;i++){
+    switch(nodes[i].component){
+      case 'ds-blocks/c-card-item':counts.cards++;break;
+      case 'ds-blocks/c-list-item':counts.listItems++;break;
+      case 'ds-blocks/c-accordion-item':case 'ds-blocks/dst-hacc-item':counts.accordionItems++;break;
+      case 'ds-blocks/ds-tab':counts.tabs++;break;
+      case 'ds-blocks/ds-column':counts.columns++;break;
+    }
+  }
+  return counts;
+}
+
+/** What a pattern can do, read off its own tree. */
+function v14Flags(nodes){
+  var components={},filled=false,i;
+  for(i=0;i<nodes.length;i++){
+    components[nodes[i].component]=true;
+    var attributes=nodes[i].attributes||{};
+    for(var k=0;k<V14_MEDIA_ATTRIBUTES.length;k++){
+      if(v14Filled(attributes[V14_MEDIA_ATTRIBUTES[k]]))filled=true;
+    }
+  }
+  var carries=false;
+  for(i=0;i<V14_MEDIA_COMPONENTS.length;i++)if(components[V14_MEDIA_COMPONENTS[i]])carries=true;
+  return {
+    form:!!components['gravityforms/form'],
+    slider:!!(components['ds-blocks/dst-banner-slider']||components['ds-blocks/marquee']),
+    tabs:!!components['ds-blocks/ds-tabs'],
+    accordion:!!(components['ds-blocks/c-accordion']||components['ds-blocks/dst-hacc']),
+    cards:!!components['ds-blocks/c-cards'],
+    media:!!(carries||filled),
+    // Separate from `media`, and the more selective of the two: the *section's
+    // own ground* is a photograph. A card grid carries pictures; a photo-backed
+    // banner is made of one. Scoring needs both, or "dominant imagery" cannot
+    // tell a hero from a list of thumbnails.
+    mediaLed:!!components['ds-blocks/dst-banner']||!!components['ds-blocks/dst-banner-slider']
+  };
+}
+
+/** A `look` string whose numbers match the tree it describes. */
+function v14Look(look,counts){
+  var byWord={card:counts.cards,cards:counts.cards,
+    item:counts.listItems,items:counts.listItems,
+    column:counts.columns,columns:counts.columns,
+    tab:counts.tabs,tabs:counts.tabs};
+  return String(look||'').replace(/(\d+)(\s+)(cards?|items?|columns?|tabs?)/g,function(all,number,gap,word){
+    var actual=byWord[word];
+    if(!actual)return all;
+    // The word has to follow the number: "5 cards" reading 3 is the bug, but
+    // "10 cards" on a pattern with no cards at all is a different sentence and
+    // is left alone rather than rewritten into nonsense.
+    return actual+gap+(actual===1?word.replace(/s$/,''):(/s$/.test(word)?word:word+'s'));
+  });
+}
+
+/**
+ * Attributes the patterns use that the captured registry does not list.
+ *
+ * The export deletes any attribute the registry does not know, which is right —
+ * it is the only thing stopping a builder-internal key reaching WordPress. But
+ * the registry is a snapshot, and where it had fallen behind the theme it was
+ * deleting real attributes: both slider controls, a card overlay strength, and
+ * `c-heading.description`, which is *copy*. Every entry below was read out of
+ * the registered patterns, so each is a value the theme already writes.
+ */
+var V14_REGISTRY_GAPS={
+  'ds-blocks/c-heading':[
+    {name:'showButtons',type:'boolean',default:true},
+    {name:'showText',type:'boolean',default:true},
+    {name:'description',type:'string',default:''},
+    {name:'title_styles',type:'object',default:{}}
+  ],
+  'ds-blocks/c-cards':[
+    {name:'mediaOverlayOpacity',type:'number',default:.5},
+    {name:'enableLightSlider',type:'boolean',default:false},
+    {name:'lightSliderSettings',type:'object',default:{}}
+  ],
+  'ds-blocks/c-list':[
+    {name:'mediaOverlayOpacity',type:'number',default:.5}
+  ],
+  'ds-blocks/c-btn':[
+    {name:'btnVariant',type:'string',default:''}
+  ],
+  'ds-blocks/dst-banner-slider':[
+    {name:'lightSliderSettings',type:'object',default:{}}
+  ],
+  'ds-blocks/dst-banner':[
+    {name:'decorations',type:'array',default:[]}
+  ]
+};
+
+function v14CompleteRegistry(){
+  var added=0;
+  Object.keys(V14_REGISTRY_GAPS).forEach(function(component){
+    var entry=DATA.registry[component];
+    if(!entry)return;
+    entry.attributes=Array.isArray(entry.attributes)?entry.attributes:[];
+    var known={};
+    entry.attributes.forEach(function(attribute){known[attribute.name]=true});
+    V14_REGISTRY_GAPS[component].forEach(function(gap){
+      if(known[gap.name])return;
+      entry.attributes.push({name:gap.name,type:gap.type,enum:null,default:gap.default,hasDefault:true});
+      added++;
+    });
+  });
+  return added;
+}
+
+/*
+ * The staging host, repaired.
+ *
+ * The ingested library points its media at `dst.dsstaging1.local`. `.local` is
+ * reserved for mDNS, so `download_url()` cannot fetch it and
+ * `wp_http_validate_url()` will not pass it — the importer records "could not
+ * sideload" and leaves a dead URL in the page. The pattern files themselves name
+ * the real host, so this puts it back.
+ */
+var V14_HOST=/\bdst(-dev)?\.dsstaging1\.local\b/g;
+function v14RepairHost(value){
+  if(typeof value==='string')return V14_HOST.test(value)?value.replace(V14_HOST,'dst.dsstaging1.com'):value;
+  if(Array.isArray(value)){for(var i=0;i<value.length;i++)value[i]=v14RepairHost(value[i]);return value}
+  if(value&&typeof value==='object'){
+    var keys=Object.keys(value);
+    for(var k=0;k<keys.length;k++)value[keys[k]]=v14RepairHost(value[keys[k]]);
+    return value;
+  }
+  return value;
+}
+
+/** Re-derives every pattern's self-description from its own tree. */
+function v14NormalizeCatalog(){
+  var report={patterns:0,counts:0,flags:0,looks:0,hosts:0,registry:v14CompleteRegistry()};
+  DATA.patterns.forEach(function(pattern){
+    report.patterns++;
+    var before=JSON.stringify(pattern.tree);
+    v14RepairHost(pattern.tree);
+    if(JSON.stringify(pattern.tree)!==before)report.hosts++;
+
+    var nodes=v14Nodes(pattern.tree),counts=v14Counts(nodes),flags=v14Flags(nodes);
+    if(JSON.stringify(pattern.counts)!==JSON.stringify(counts)){pattern.counts=counts;report.counts++}
+    else pattern.counts=counts;
+    var merged=Object.assign({},pattern.flags||{},flags);
+    if(JSON.stringify(pattern.flags)!==JSON.stringify(merged)){pattern.flags=merged;report.flags++}
+    else pattern.flags=merged;
+
+    var look=v14Look(pattern.look,counts);
+    if(look!==pattern.look){pattern.look=look;report.looks++}
+    // The scoring profile is cached off `look`; a corrected line must not be
+    // read through a cache built from the wrong one.
+    if(pattern.__sbsProfile!==undefined){try{delete pattern.__sbsProfile}catch(error){/* frozen is fine */}}
+
+    // Every pattern claims a source. Five of them are not in the registered
+    // library, and an export that says "attached-skill-library" for a pattern
+    // nobody can point at is a provenance claim the builder cannot back.
+    if(V14_UNREGISTERED[pattern.id])pattern.provenance='builder-placeholder';
+  });
+  DATA.media=v14RepairHost(DATA.media);
+  return report;
+}
+
+/*
+ * Patterns the builder ships that are not in `patternsSBS/`. Kept, because the
+ * families they fill would otherwise have gaps, but labelled — and the logo
+ * family's default is moved to a pattern that is genuinely in the library.
+ */
+var V14_UNREGISTERED={'sbs-logo-p1-v1':true,'sbs-logo-p2-v1':true,'sbs-logo-p3-v1':true,
+  'sbs-cards-p1002-v1':true,'sbs-cards-p1003-v1':true};
+
+function v14RepairDefaults(){
+  var changed=[];
+  Object.keys(DATA.defaultPatternByFamily).forEach(function(family){
+    var id=DATA.defaultPatternByFamily[family];
+    if(!V14_UNREGISTERED[id])return;
+    var replacement=DATA.patterns.filter(function(pattern){
+      return pattern.family===family&&!V14_UNREGISTERED[pattern.id];
+    })[0];
+    if(!replacement)return;
+    DATA.defaultPatternByFamily[family]=replacement.id;
+    changed.push(family+': '+id+' -> '+replacement.id);
+  });
+  return changed;
+}
+
+var v14Report=v14NormalizeCatalog();
+v14Report.defaults=v14RepairDefaults();
+
+/*
+ * The imagery signal, now that the flag is truthful.
+ *
+ * `flags.media` was false on 92 patterns that carry pictures, so correcting it
+ * would otherwise have handed the same "carries photography" bonus to 119 of
+ * 154 patterns and flattened the very distinction the dial exists to make.
+ * `mediaLed` is the sharper half: the section's own ground is a photograph. A
+ * concept asking for dominant imagery now prefers those, and still prefers a
+ * card grid with pictures over a pattern with none.
+ */
+var v8ScoreBeforeV14=v8Score;
+v8Score=function(pattern,context){
+  var result=v8ScoreBeforeV14(pattern,context),
+    imagery=Number(context.design.imagery),
+    bonus=(pattern.flags||{}).mediaLed?Math.round((imagery-50)/10):0;
+  if(!bonus)return result;
+  result.score+=bonus;
+  result.why.push((bonus>0?'+':'')+bonus+' the band itself is a photograph');
+  return result;
+};
+
+/* ================================================================== *
+ * v13 — The export writes media the way the patterns write it
+ *
+ * A page imported into WordPress arrived with its pictures missing, and the
+ * reason was not the patterns. All 169 registered patterns agree on how DST
+ * stores a picture, and the export had drifted to a shape of its own:
+ *
+ *   every pattern   c-media.media = {lazyLoad, primaryType, videoExternal,
+ *                                    imagePrimary:{id,url,alt,mimeType,
+ *                                    mediaType,size},
+ *                                    style:{desktop:{mediaRatio,focalPoint},
+ *                                           mobile:{…}, borderRadius}}
+ *   the export      c-media.media = {src, alt, ratioDesktop:'16/9'}
+ *
+ *   every pattern   backgroundImage:[{id, desktop:{media:{id,url,mime,type},
+ *                                     fixed,focal,size,width}, mobile:{…},
+ *                                     lazy, hideMobile, posterImage,
+ *                                     fetchPriority, overlay, overlayEnabled,
+ *                                     overlayOpacity}]
+ *   the export      backgroundImage:[{src, desktop:{size,focal}, …}]
+ *
+ * A block handed an object it has no reader for renders nothing, which is
+ * exactly what "so many things missing" looks like. So this layer converts, at
+ * the export boundary, from whatever the builder holds internally into the
+ * shape the theme reads — for backgrounds, for the three media blocks, for card
+ * media and clips, and for the marquee rail.
+ *
+ * Two details that decide whether an import is usable rather than merely
+ * plausible:
+ *
+ *   * Every media object keeps an `id` key, even at `0`. The importer sideloads
+ *     a URL and writes the new attachment id back only into a key that already
+ *     exists — `array_key_exists( 'id', $value )` — so without the key the page
+ *     never learns which attachment it got.
+ *   * `mime`/`mimeType` is filled in from the file extension. DST decides
+ *     between an `<img>` and a `<video>` on the type, and an empty type on a
+ *     `.mp4` is a still image that never plays.
+ * ================================================================== */
+
+/** `16/9` is the builder's way of writing DST's `16x9`. */
+function v13Ratio(value){
+  var text=String(value||'').trim();
+  if(!text)return '';
+  if(/^\d+x\d+$/.test(text))return text;
+  var parts=text.split(/[\/:x]/);
+  if(parts.length!==2)return '';
+  var w=parseFloat(parts[0]),h=parseFloat(parts[1]);
+  return Number.isFinite(w)&&Number.isFinite(h)&&w&&h?w+'x'+h:'';
+}
+
+var V13_MIME={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',avif:'image/avif',svg:'image/svg+xml',
+  mp4:'video/mp4',webm:'video/webm',mov:'video/quicktime',m4v:'video/x-m4v',ogv:'video/ogg'};
+
+/**
+ * The media type, from the extension when nothing else says.
+ *
+ * A remote URL with a query string is the common case — a stock photo service
+ * hands back `…/photo.jpeg?auto=compress&w=1600` — so the query is dropped
+ * before the extension is read.
+ */
+function v13Mime(src,video){
+  var path=String(src||'').split(/[?#]/)[0],match=path.match(/\.([a-z0-9]+)$/i);
+  var known=match?V13_MIME[match[1].toLowerCase()]:'';
+  if(known)return known;
+  return video?'video/mp4':'image/jpeg';
+}
+
+function v13Focal(value,fallbackX,fallbackY){
+  var focal=value&&typeof value==='object'?value:{},
+    x=Number(focal.x),y=Number(focal.y);
+  return {x:Number.isFinite(x)?x:fallbackX,y:Number.isFinite(y)?y:fallbackY};
+}
+
+/**
+ * Everything the builder knows about one picture, read out of any of the shapes
+ * it stores them in: its own flat `{src,alt}`, a DST attachment, a DST media
+ * block or a DST background layer.
+ */
+function v13Read(raw){
+  if(!raw)return null;
+  var media=v2MediaObject(raw);
+  if(!media||!media.src)return null;
+  var deep=raw&&typeof raw==='object'?raw:{},
+    inner=deep.media||deep.imagePrimary||(deep.desktop&&deep.desktop.media)||{},
+    video=media.kind==='video'||isVideoMedia(raw)||isVideoMedia(inner);
+  return {
+    src:media.src,
+    alt:media.alt||'Editorial image',
+    title:inner.title||media.caption||media.alt||'',
+    id:Number(deep.id||inner.id||0)||0,
+    video:video,
+    mime:inner.mime||inner.mimeType||media.mime||v13Mime(media.src,video),
+    poster:media.poster||deep.posterImage||'',
+    source:media.source||deep.source||'',
+    intent:media.intent||deep.intent||(video?'editorial-video':'editorial-photo'),
+    ratioDesktop:v13Ratio(media.ratioDesktop),
+    ratioMobile:v13Ratio(media.ratioMobile),
+    fitDesktop:media.fitDesktop||'',
+    fitMobile:media.fitMobile||'',
+    focalDesktop:v13Focal((deep.desktop&&deep.desktop.focal)||(deep.style&&deep.style.desktop&&deep.style.desktop.focalPoint),.5,.5),
+    focalMobile:v13Focal((deep.mobile&&deep.mobile.focal)||(deep.style&&deep.style.mobile&&deep.style.mobile.focalPoint),.5,.5),
+    hideMobile:!!(media.hideMobile||deep.hideMobile)
+  };
+}
+
+/** A WordPress attachment object — what `c-card-item.media` holds. */
+function v13Attachment(read){
+  return {id:read.id,url:read.src,alt:read.alt,mimeType:read.mime,
+    mediaType:read.video?'video':'image',size:'full'};
+}
+
+/** The `media` attribute of `c-media`, `l-content-2` and `c-accordion`. */
+function v13MediaBlock(read,existing){
+  var previous=existing&&typeof existing==='object'?existing:{},
+    style=previous.style&&typeof previous.style==='object'?previous.style:{},
+    desktop={focalPoint:read.focalDesktop},
+    mobile={focalPoint:read.focalMobile};
+  if(read.ratioDesktop)desktop.mediaRatio=read.ratioDesktop;
+  if(read.fitDesktop)desktop.mediaFit=read.fitDesktop;
+  if(read.ratioMobile||read.ratioDesktop)mobile.mediaRatio=read.ratioMobile||read.ratioDesktop;
+  if(read.fitMobile||read.fitDesktop)mobile.mediaFit=read.fitMobile||read.fitDesktop;
+  var out={
+    lazyLoad:previous.lazyLoad!==false,
+    primaryType:read.video?'video':'image',
+    videoExternal:previous.videoExternal&&typeof previous.videoExternal==='object'?previous.videoExternal:{html:''},
+    imagePrimary:v13Attachment(read),
+    style:{desktop:desktop,mobile:mobile,borderRadius:style.borderRadius||'default'}
+  };
+  if(read.video)out.videoLocal={id:read.id,url:read.src};
+  // A clip that has not buffered must not be a hole in the page.
+  if(read.video&&read.poster)out.posterImage=read.poster;
+  return out;
+}
+
+/** One side of a DST background layer. */
+function v13BackgroundSide(read,focal,previous){
+  var side=previous&&typeof previous==='object'?previous:{};
+  return {
+    fixed:!!side.fixed,
+    focal:focal,
+    size:side.size||'cover',
+    width:side.width||'auto',
+    media:{id:read.id,title:read.title,url:read.src,alt:read.alt,
+      mime:read.mime,type:read.video?'video':'image'}
+  };
+}
+
+/**
+ * A background layer, in the shape all 31 photo-backed patterns use.
+ *
+ * The per-layer overlay is carried too. The block-level `backgroundOverlay*`
+ * attributes are a separate control in DST, and a layer that dropped its own
+ * overlay lost a scrim the pattern author put there on purpose.
+ */
+function v13BackgroundLayer(raw,id,index){
+  var read=v13Read(raw);
+  if(!read)return null;
+  var deep=raw&&typeof raw==='object'?raw:{};
+  var layer={
+    id:deep.id&&typeof deep.id==='string'?deep.id:(id+'-layer-'+(index+1)),
+    desktop:v13BackgroundSide(read,read.focalDesktop,deep.desktop),
+    mobile:v13BackgroundSide(read,read.focalMobile,deep.mobile),
+    lazy:deep.lazy!==false,
+    hideMobile:read.hideMobile,
+    posterImage:read.poster||deep.posterImage||'',
+    fetchPriority:deep.fetchPriority||'none',
+    overlayEnabled:!!deep.overlayEnabled,
+    overlay:deep.overlay||'',
+    overlayOpacity:Number.isFinite(Number(deep.overlayOpacity))?Number(deep.overlayOpacity):.5
+  };
+  // Kept alongside the DST shape rather than instead of it: the preview, the
+  // audit and the concept round-trip all read `src`, and dropping it here would
+  // break re-importing a page the builder itself exported.
+  layer.src=read.src;
+  layer.alt=read.alt;
+  if(read.source)layer.source=read.source;
+  if(read.intent)layer.intent=read.intent;
+  // `kind` and `mime` at the layer root are how a clip was announced before the
+  // per-breakpoint descriptor existed, and the preview and the importer both
+  // still read them. Adding the DST shape is not a reason to drop them.
+  if(read.video){layer.kind='video';layer.mime=read.mime;layer.mediaType='video'}
+  return layer;
+}
+
+function v13BackgroundLayers(value,id){
+  var raw=Array.isArray(value)?value:(value&&typeof value==='object'?[value]:[]);
+  var out=[];
+  for(var i=0;i<raw.length;i++){
+    var layer=v13BackgroundLayer(raw[i],id||'media',i);
+    if(layer)out.push(layer);
+  }
+  return out;
+}
+
+var V13_MEDIA_BLOCKS=['ds-blocks/c-media','ds-blocks/l-content-2','ds-blocks/c-accordion'];
+var V13_BACKGROUND_BLOCKS=['ds-blocks/dst-banner','ds-blocks/dst-wrapper','ds-blocks/ds-columns','ds-blocks/c-cards','ds-blocks/c-list'];
+
+/**
+ * The export node normalizer, with media rewritten into the theme's own shape.
+ *
+ * Reassigning the binding means the base's own recursive call lands here too,
+ * so every depth is converted without walking the tree a second time.
+ */
+var normalizeExportNodeBeforeV13=normalizeExportNode;
+normalizeExportNode=function(input,ctx){
+  var node=normalizeExportNodeBeforeV13(input,ctx),attrs=node.attributes||{};
+  var section=ctx&&ctx.section;
+
+  if(V13_BACKGROUND_BLOCKS.indexOf(node.component)>=0&&attrs.backgroundImage){
+    var layers=v13BackgroundLayers(attrs.backgroundImage,node.id);
+    if(layers.length)attrs.backgroundImage=layers;
+    else delete attrs.backgroundImage;
+  }
+
+  if(V13_MEDIA_BLOCKS.indexOf(node.component)>=0){
+    // A media block whose slot was never filled still has to carry a picture:
+    // the preview renders the section's own choice there, and a preview that
+    // shows a photograph the export omits is the disagreement this fixes.
+    var read=v13Read(attrs.media)||(section?v13Read(mediaChoice(section,0)):null);
+    if(read)attrs.media=v13MediaBlock(read,attrs.media);
+  }
+
+  if(node.component==='ds-blocks/c-card-item'){
+    var card=v13Read(attrs.media);
+    if(card){
+      attrs.media=v13Attachment(card);
+      if(card.video)attrs.video={id:card.id,url:card.src};
+    }
+    var clip=v13Read(attrs.video);
+    if(clip&&!card)attrs.video={id:clip.id,url:clip.src};
+  }
+
+  if(node.component==='ds-blocks/c-accordion-item'){
+    var item=v13Read(attrs.media);
+    if(item)attrs.media=v13Attachment(item);
+  }
+
+  if(node.component==='ds-blocks/marquee'&&Array.isArray(attrs.images)){
+    attrs.images=attrs.images.map(function(entry,index){
+      var instance=(entry&&entry.instanceId)||(node.id+'-logo-'+(index+1));
+      var logo=v13Read(entry);
+      if(!logo){
+        // A placeholder mark has no file, and an image block with no `url` is an
+        // empty slot in WordPress. The drawing itself becomes the file — inline
+        // SVG as a data URI, which the importer leaves alone because it only
+        // sideloads `http(s)`, and which the browser renders directly.
+        var svg=entry&&typeof entry.svg==='string'?entry.svg:'';
+        if(!svg)return entry;
+        return {id:0,url:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg),
+          alt:(entry&&entry.alt)||'Client logo placeholder',mimeType:'image/svg+xml',
+          mediaType:'image',size:'full',caption:(entry&&entry.caption)||'',instanceId:instance};
+      }
+      var out=v13Attachment(logo);
+      out.caption=(entry&&entry.caption)||logo.title||'';
+      out.instanceId=instance;
+      return out;
+    });
+  }
+
+  return node;
+};
+
+/* ================================================================== *
  * v12 — Editing a module never moves the preview
  *
  * Every property in the module editor queued a full rebuild, and a rebuilt
@@ -6814,7 +8762,7 @@ document.addEventListener('click',function(event){
   requestAnimationFrame(function(){v12QueuePaint(v6Section(section.id))});
 },true);
 
-v2EnsureProject(state.project);state.project.sections.forEach(function(s){ensureSectionSettings(s);syncSectionNode(s)});window.__SBS_TEST_API={version:SBS_BUILDER_VERSION,previewSwitcher:{step:v6Step,pool:v6PatternPool,hoverId:function(){return v6HoverId},show:v6Show,hide:v6Hide,geometry:v6Geometry},patternChoice:function(family,index){return v8RankPatterns(family,{index:index||0}).slice(0,8).map(function(entry){return {id:entry.pattern.id,score:entry.score,why:entry.why}})},pickPattern:function(family,index){return (v8PickPattern(family,index||0)||{}).id||''},briefDirectives:function(){return briefDirectives(state.project.brief)},ensureProject:v2EnsureProject,buildTheme:function(p,options){return buildTheme(p||state.project,options||{})},buildSiteDocument:function(p,options){return buildSiteDocument(p||state.project,options||{})},buildPageExport:function(p){return buildPageExport(p||state.project)},buildNavigationExport:function(p){return buildNavigationExport(p||state.project)},buildFooterExport:function(p){return buildFooterExport(p||state.project)},buildGlobalsExport:function(p){return buildGlobalsExport(p||state.project)},buildCompleteExport:function(p){return buildExport(p||state.project)},auditDocument:v2AuditDocument,createSection:createSection,patternIds:DATA.patterns.map(function(p){return p.id}),patterns:DATA.patterns.map(function(p){return {id:p.id,family:p.family}}),flowIds:FLOW_CATALOG.map(function(f){return f.id}),flowCatalog:FLOW_CATALOG,allFlows:function(p){return allFlows(p||state.project)},design:{ensure:v3EnsureDesign,dialTokens:function(p){return dialTokens((p||state.project).design)},dialLevels:function(p){return dialLevels((p||state.project).design)},dialCss:function(p){return dialCss((p||state.project).design)},buttonStyleCss:buttonStyleCss,presets:DIAL_PRESETS,dialKeys:DIAL_KEYS,buttonStyles:BUTTON_STYLES},brain:{applyContentDraft:v3ApplyContentDraft,applyCustomFlow:v3ApplyCustomFlow,sectionFamilies:SECTION_FAMILIES},documents:{accept:BRIEF_DOCUMENT_ACCEPT,kind:briefDocumentKind,supported:isBriefDocument,read:readBriefDocument,readAll:readBriefDocuments,apply:v11ReadBriefFiles},paint:{painted:function(){return v12Painted},rebuilt:function(){return v12Rebuilt},queue:v12QueuePaint,section:v6RepaintSection},media:{sectionSlots:v5SectionSlots,slots:function(){return v5MediaSlots(state.project)},fillSlots:v5FillSlots,applyPlan:v5ApplyMediaPlan,clearPlan:v5ClearMediaPlan,assetMedia:v5AssetMedia,slotAt:v11SlotAt,markTiles:v11MarkMediaTiles,dragging:function(){return v11Drag}},simple:{mode:v4Mode,setMode:v4SetMode,steps:v4Steps,ensure:function(){return v4EnsureSimple(state.project)},applyConcept:v4ApplyConcept,normalizeConcepts:v4NormalizeConcepts,buildConceptExport:function(p){return v4BuildConceptExport(p||state.project)},importConcept:v4ImportConcept,canLeaveBrief:v4CanLeaveSimpleBrief},styles:{
+v2EnsureProject(state.project);state.project.sections.forEach(function(s){ensureSectionSettings(s);syncSectionNode(s)});window.__SBS_TEST_API={version:SBS_BUILDER_VERSION,previewSwitcher:{step:v6Step,pool:v6PatternPool,hoverId:function(){return v6HoverId},show:v6Show,hide:v6Hide,geometry:v6Geometry},patternChoice:function(family,index){return v8RankPatterns(family,{index:index||0}).slice(0,8).map(function(entry){return {id:entry.pattern.id,score:entry.score,why:entry.why}})},pickPattern:function(family,index){return (v8PickPattern(family,index||0)||{}).id||''},briefDirectives:function(){return briefDirectives(state.project.brief)},ensureProject:v2EnsureProject,buildTheme:function(p,options){return buildTheme(p||state.project,options||{})},buildSiteDocument:function(p,options){return buildSiteDocument(p||state.project,options||{})},buildPageExport:function(p){return buildPageExport(p||state.project)},buildNavigationExport:function(p){return buildNavigationExport(p||state.project)},buildFooterExport:function(p){return buildFooterExport(p||state.project)},buildGlobalsExport:function(p){return buildGlobalsExport(p||state.project)},buildCompleteExport:function(p){return buildExport(p||state.project)},auditDocument:v2AuditDocument,createSection:createSection,patternIds:DATA.patterns.map(function(p){return p.id}),patterns:DATA.patterns.map(function(p){return {id:p.id,family:p.family}}),flowIds:FLOW_CATALOG.map(function(f){return f.id}),flowCatalog:FLOW_CATALOG,allFlows:function(p){return allFlows(p||state.project)},design:{ensure:v3EnsureDesign,dialTokens:function(p){return dialTokens((p||state.project).design)},dialLevels:function(p){return dialLevels((p||state.project).design)},dialCss:function(p){return dialCss((p||state.project).design)},buttonStyleCss:buttonStyleCss,presets:DIAL_PRESETS,dialKeys:DIAL_KEYS,buttonStyles:BUTTON_STYLES},brain:{applyContentDraft:v3ApplyContentDraft,applyCustomFlow:v3ApplyCustomFlow,sectionFamilies:SECTION_FAMILIES},documents:{accept:BRIEF_DOCUMENT_ACCEPT,kind:briefDocumentKind,supported:isBriefDocument,read:readBriefDocument,readAll:readBriefDocuments,apply:function(files){return v11ReadBriefFiles(files)},attached:v17Attachments,detach:v17DetachDocument,chips:v17DocumentChips,source:function(){return briefBrainFeature.briefSourceText(state.project)}},updateBinding:function(path,value,input){return updateBinding(path,value,input)},paint:{painted:function(){return v12Painted},rebuilt:function(){return v12Rebuilt},queue:v12QueuePaint,section:v6RepaintSection},catalog:{report:function(){return v14Report},counts:v14Counts,flags:v14Flags,look:v14Look,nodes:v14Nodes,all:function(){return DATA.patterns},defaults:function(){return DATA.defaultPatternByFamily},unregistered:function(){return V14_UNREGISTERED}},registry:function(){return DATA.registry},mediaLibrary:function(){return DATA.media},exportMedia:{read:v13Read,attachment:v13Attachment,block:v13MediaBlock,layers:v13BackgroundLayers,ratio:v13Ratio,mime:v13Mime},media:{sectionSlots:v5SectionSlots,slots:function(){return v5MediaSlots(state.project)},fillSlots:v5FillSlots,applyPlan:v5ApplyMediaPlan,clearPlan:v5ClearMediaPlan,assetMedia:v5AssetMedia,slotAt:v11SlotAt,markTiles:v11MarkMediaTiles,dragging:function(){return v11Drag}},simple:{mode:v4Mode,setMode:v4SetMode,steps:v4Steps,ensure:function(){return v4EnsureSimple(state.project)},applyConcept:v4ApplyConcept,normalizeConcepts:v4NormalizeConcepts,buildConceptExport:function(p){return v4BuildConceptExport(p||state.project)},importConcept:v4ImportConcept,canLeaveBrief:v4CanLeaveSimpleBrief},styles:{
   families:function(){return STYLE_FAMILIES},
   all:function(){return allStyles()},
   production:function(){return productionStyles()},

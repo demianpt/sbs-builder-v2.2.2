@@ -446,7 +446,13 @@ test.describe('mobile menu styles', () => {
     await chooseMobileMenu(page, 'aurora');
     const navigation = await page.evaluate(() => window.__SBS_TEST_API.buildNavigationExport());
     const header = navigation.concept.global.navigation;
+    // The builder's own record of the choice…
     expect(header.nav.mobileMenu).toBe('aurora');
-    expect(header.attributes.mobileMenuStyle).toBe('aurora');
+    // …and the exported form of it. `dst-navigation` declares no attribute for a
+    // takeover style, so it travels as a class the theme's stylesheet hooks —
+    // `mobileMenuStyle` was invented, and WordPress kept it in the markup and
+    // ignored it.
+    expect(header.attributes.className).toContain('mobile-menu--aurora');
+    expect(header.attributes.mobileMenuStyle).toBeUndefined();
   });
 });

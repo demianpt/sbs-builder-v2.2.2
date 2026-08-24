@@ -1,5 +1,565 @@
 # Release notes
 
+## 2.9.0 — What imports is what you approved
+
+An imported page did not look like the preview, and the reason was never the
+patterns. Nobody had read the theme. The registry the export validates against
+was a *snapshot*; the header and footer were shorthand for the importer to guess
+at; and the plugin was reading a field the builder had stopped writing years of
+changes ago.
+
+`~/sites/minisbssandbox` settled all of it. `wp-content/themes/digitalsilk` has 46
+block manifests and two template parts, and those are the authority: which blocks
+exist, which attributes each one has, which of those the WordPress editor shows,
+and exactly how a header and a footer are built.
+
+### The registry is generated from the theme
+
+`npm run sync:registry` reads `build/blocks/**/block.json` and rebuilds the
+component registry from it. A block's real attribute set is not only what its
+manifest declares: WordPress adds attributes for the `supports` a block opts into,
+and the theme's own HOCs add more — the container control, the gap control, the
+effects panel, the class list, the variant picker, the pattern selector. Every one
+of those names was read out of `build/blocks/hoc-components/*/index.js` rather
+than guessed, because those are the attributes the *editor* shows, and the point
+of the exercise is an imported block you can still edit with the controls the
+builder used.
+
+    52 components · 1,270 attributes · +158 the builder had never heard of
+
+Four of them were whole blocks: `dst-footer`, `dst-footer-section`,
+`dst-footer-slot` and `dst-site-logo` — the footer family the shorthand had been
+standing in for.
+
+The sync is a **union**, not a replacement. This theme build is a different
+vintage from the install the pattern library was exported from, so the registry
+keeps anything the theme declares, anything the 169 patterns actually use, and a
+short explicit list of what the builder authors itself. Replacing outright would
+have deleted both slider controls, `c-heading.description` and every card overlay
+strength on the way out — the exact failure the allow-list exists to prevent,
+mirrored.
+
+### The header and the footer are real block trees
+
+They were shorthand: one `dst-navigation` node with a `nav: {logo, menu, cta}`
+object hanging off it and `importerShorthand: true`, and the plugin expanded that
+into whatever it guessed. `parts/header.html` and `parts/footer.html` are the
+answer, and the export now builds those trees exactly — every block, every
+attribute name, every level of nesting:
+
+    dst-navigation                          dst-footer
+      dst-navigation-announcement             dst-footer-section[top]
+      dst-navigation-top                        dst-footer-slot
+      dst-navigation-main                     dst-footer-section[middle]
+        …-content[logo]   > dst-site-logo       dst-footer-slot × 4
+        …-content[menu]   > …-navigation-menu  dst-footer-section[bottom]
+        …-content[search] > …-navigation-search  dst-footer-slot × 2
+      dst-navigation-mobile
+        …-content[logo] > dst-site-logo
+        …-mobile-dropdown > …-navigation-menu
+      dst-navigation-bottom
+
+**Menus are the other half of it.** The theme's menu blocks read a *location* —
+`menuSource: 'location'`, `menuLocation: 'primary-menu'` — not a list of links and
+not a menu id. So the links travel beside the tree as a `menus` plan, the blocks
+name the location they expect, and the plugin builds each menu and points the
+location at it. The 1.0 importer created one menu and wrote its id into a
+`menuValue` attribute the theme's block does not declare, which is why an
+imported header came in empty.
+
+The phone takeover had no attribute behind it either; `mobileMenuStyle` was
+invented, and WordPress kept it in the markup and ignored it. It travels as a
+class the theme's stylesheet hooks.
+
+### Only attributes the theme declares leave the builder
+
+`node scripts/verify-against-theme.mjs` looks every exported attribute up in the
+theme's manifests. An unknown attribute is not an error — WordPress keeps it and
+ignores it, which is worse: a setting the strategist made that the page does not
+have, and nothing anywhere says so. It found four:
+
+**`backgroundOverlayOpacity`.** The theme carries an overlay's strength *inside*
+the colour — `#333333b0`, `rgba(7,28,42,.82)` — and declares no opacity
+attribute. Exported as a separate number, every scrim landed at **full strength**:
+a hero's photograph vanished behind a solid band of ink. The strength is now
+folded into the colour, multiplied rather than replaced so a stop that was already
+half transparent under a 60% scrim ends up at 30% — which is what the browser
+composites in the preview. A token that can only be resolved in the browser
+becomes `color-mix(in srgb, …)`.
+
+**`htmlTag` on a wrapper.** Invented by `makeFullBleedBand`. A wrapper is a
+`<section>` and has no say in it.
+
+**`title` and `link` on `c-list-item`.** Mine, from the first draft of the footer.
+That block has `listTitle`, `listSubTitle`, `heroText` and `icon` — and no link
+attribute at all, so a link column built from list items imports as a column of
+unclickable words. The theme's own footer part puts link columns in a paragraph of
+anchors, and so does this now.
+
+    194 blocks · 1,080 attributes · 0 the theme does not know
+
+### The plugin is source, and it is 2.0.0
+
+It existed only as a zip, which meant every change to it was a change nobody
+could review and nobody could repeat. `wordpress-plugin/` is the source and
+`npm run build:plugin` produces the artifact.
+
+**The defect that mattered most.** The builder moves a paragraph's words onto the
+node — its export normalizer does `node.text = node.text || attrs.content` and
+then deletes the attribute — and the converter only ever read `attributes.content`
+and `content.text`. **Every paragraph in every artifact imported blank**: body
+copy, the footer description, the legal line, the announcement bar. Nothing
+reported it, because an empty paragraph is a perfectly valid block. Three
+assertions now fail if a `<p></p>` reaches a page.
+
+Also in 2.0.0: `create_navigation_menus` builds every menu the artifact names and
+assigns each to its theme location, skipping locations the theme has not
+registered rather than writing invisible keys; menus are replaced rather than
+appended to, so importing twice no longer doubles every item; a menu id is written
+only for a 1.0 artifact that names no location; and a sideloaded logo becomes the
+`customLogoId` the site-logo block reads, with a warning rather than a broken
+reference when the file could not be fetched.
+
+### Coverage
+
+    tests/browser/wordpress-parity.spec.mjs   8   the canonical trees, areas,
+                                                  menu binding, takeover, the fold
+    tests/unit/theme-parity.test.mjs          6   registry vs theme, artifacts vs
+                                                  theme — skipped when no theme
+    tests/wordpress/importer-unit.php        36   +13, including the paragraph guard
+    npm run verify:export                         records and checks in one step
+
+The unit tests skip rather than fail when the theme is not checked out: the check
+is about agreement, and there is nothing to agree with.
+
+### Two tests that were asserting the bug
+
+`color-controls` required `backgroundOverlayOpacity` in the export and
+`navigation-menu` required `attributes.mobileMenuStyle`. Both are attributes the
+theme ignores; both now assert the form that actually renders. And the
+every-property sweep gained a second pass, because a control that modifies
+something another control creates — an overlay's strength, a motif's scale — is
+not a dead control, it is one that needs its subject to exist first.
+
+## 2.8.0 — An imported page is a page you can use
+
+A page exported from the builder and imported into WordPress came in with things
+missing. None of the causes were in the patterns: the trees are faithful to
+`patternsSBS/` block for block, on 155 of 156 patterns, and no enabled overlay is
+lost at ingestion. What had drifted was everything *around* them — the export's
+media shape, the catalogue's description of the library, and a handful of editor
+controls that moved the preview and nothing else.
+
+### Named corrections to individual patterns
+
+Everything in `clean-patterns.mjs` above this was a rule. These are decisions
+about individual patterns that no rule can derive — how many quotes a pull-quote
+band shows, where a column sits in its row, whether a picture should hold still
+while the copy beside it scrolls. They live in a `CORRECTIONS` table rather than
+hand-edited into the data, so a re-ingest cannot quietly revert them, and
+`pattern-corrections.spec.mjs` fails if one does.
+
+**How many quotes.** Sweeping the whole testimonial family to three across in
+2.8.0 was wrong: a pull-quote band shows one large quote and a card band shows
+two or three, and which it is belongs to the pattern.
+
+    p15 v1   1        p43 v2   2
+    p15 v2   1        p10 v1   2
+    p43 v1   1        p17 v1   3 (unchanged — its own value)
+
+**Where a column sits.** `sbs-testimonial-p15-v2` set its row to `end` *and*
+pinned its first column to `bottom`, so the heading sat on the floor of the band
+beside a column of quotes. The column is what actually renders `align-self`, so
+both had to move — correcting the row alone left it exactly where it was.
+
+**A picture that holds still.** The two `p31` stats bands put a tall picture
+beside a list of figures and centred it, which leaves it floating in the middle
+of a lot of nothing. The picture's column is now marked `is-sticky-media` and the
+row aligns to the top, so the picture holds while the figures move past it.
+
+Three details decide whether that works rather than silently doing nothing:
+`align-self:start`, because a stretched grid item is already as tall as its row
+and has nowhere to travel; `overflow:visible` asserted on the ancestors, because
+`overflow:hidden` anywhere above a sticky element turns it back into a static one
+and both `.has-bg-media` and the decoration layer set it; and `position:static`
+under 900px, because sticky and a single column would pin the picture to the top
+and scroll the copy underneath it. The held column is also bounded by the viewport
+rather than by the row, since a picture taller than the window can never be seen
+whole.
+
+`sbs-stats-p31-v2`'s list also carried `c-default` — a container inside a band
+that already is one, with 2.4rem of side padding it did not need. Naming its
+container empty resolves it to `c-full`: no class, no padding.
+
+### The footer
+
+`.sbs-footer-statement` was measured at 105rem and its headline clamped to twelve
+characters, which broke a four-word sign-off across four lines. Both take the
+width they have.
+
+The centred layout is the one exception, and it has to be: centring is relative
+to something, and at full width there is nothing to centre within — that layout
+became pixel-for-pixel the editorial one, which is what `global-parts.spec.mjs`
+caught. It keeps a reading measure, which a centred line needs anyway.
+
+**The watermark is the client's name.** `footer.wordmark` was seeded once from the
+brand and never revisited — `if (!project.footer.wordmark)` is only ever true on a
+brand new project — so every page built afterwards carried **Vision** across the
+bottom, from the default project's own name. It now follows the brand the way the
+logo text and the legal line already do, until somebody types their own. One word,
+because it is set at ten rem: a leading article is dropped (`The Bicycle Company`
+→ `Bicycle`) and a first word too short to read as a fragment takes the second
+with it (`Ex Machina Studio` → `Ex Machina`).
+
+### The form slot
+
+`.sbs-form-slot` is the one surface that is always white, and its text colour was
+the palette's `ink` — which on a dark-ground palette is a *pale* colour. The
+darkest of the palette's own candidates is used instead, with `#111` as the floor
+when a palette has nothing dark in it at all.
+
+### A stats band with real figures in it
+
+The content writer was told to leave every number empty and write "Add the
+measured figure" where it belonged. That is the safe answer and an unpresentable
+one: three cards reading *Add the measured figure* is a template, not a concept.
+
+The prompt now asks for an illustrative figure **in the unit the industry actually
+uses** — `2,000 km` for a motorcycle rental, `48 hrs` for a turnaround, `12 sites`
+for a contractor — taking the unit from the brief and keeping the magnitude round
+and obviously a placeholder. The prohibition on invented *verifiable* facts is
+unchanged and now spelled out: no satisfaction percentages, no review scores, no
+revenue, no headcount, no years trading.
+
+`v19StatsFigures` is the net under it — for the built-in planner, for a model that
+ignores the instruction, and for demo content nobody has run the writer over yet.
+It reads the brief's own vocabulary against a table of trades and fills any value
+that has no digit in it. Either way the band's own body says the figures are
+illustrative and to be confirmed, rather than leaving somebody to notice.
+
+### Coverage
+
+`tests/browser/pattern-corrections.spec.mjs` (13): the five quote counts, the
+column that had to move twice, both held pictures and the three CSS conditions
+that make holding work, the form slot against a deliberately pale palette, the
+footer widths including the centred exception, the watermark through four brand
+names and one typed override, and a stats band whose every value arrived as an
+instruction.
+
+### The pattern library stops carrying the site it came from
+
+All 156 patterns are real WordPress exports, so each one arrived with that
+install's own decisions baked in. Three of them were actively wrong here, and
+`scripts/clean-patterns.mjs` takes them out — repeatably, printing what it
+changed.
+
+**Media.** A card named
+`dsstaging1.com/wp-content/uploads/2026/01/exterior-facade-high-reflection-blue.jpg`
+— somebody else's photograph of somebody else's building — and it won over the
+imagery found for *this* brief simply by being present, because an attribute that
+exists is never replaced. 230 references gone.
+
+The *slot* is not the file, and that distinction cost two attempts to get right.
+Deleting the attribute deleted the pattern's intent with the photograph: a
+thirteen-card band came back with no pictures at all, and a third of the
+catalogue's photo-backed bands became flat colour. Worse, a background *layer*
+that lost its file kept `fixed`, `focal`, `size` and `width` — still shaped like a
+layer, rendering nothing, and not empty enough to notice. So an emptied slot is
+now an explicit marker (`media: {}`, `backgroundImage: []`, a fileless layer
+collapsed), and `v18FillEmptySlots` fills every one at sync from `mediaChoice` —
+the imagery pass's output once it has run, a labelled placeholder before that.
+Preview, audit and export all see the same picture.
+
+**Overlays.** `backgroundOverlay: '#f5f5f5'` at opacity 1 over a photograph is a
+grey rectangle where the photograph was. So were `var(--dst--secondary-color1)`
+(white), `#dddddd`, a bright green gradient, and the hard
+`linear-gradient(180deg,rgba(7,146,227,0) 0%,rgb(0,0,0) 73%)` on the sliders. 233
+of them, on cards and lists, removed. The renderer already has a scrim for the
+one case that needs one — a title sitting on a picture — and it is a soft
+bottom-up gradient that darkens the type's ground and leaves the image visible.
+
+**Links.** 14 buttons pointed at the exporting site's own contact page, which is a
+dead link on every page built from the pattern. Now `#contact`.
+
+### A band's text tone follows its overlay, not its family
+
+The sharpest of these. A hero's `is-style-colors-inverted` came from the family
+preset — every hero is inverted, because a hero is usually a photograph — while
+the overlay came from the pattern, and five patterns fade something *pale* across
+the band and put the headline in it. The band class carries `!important` colour
+rules, so it overruled the heading renderer, which had already worked out the
+right answer. White type on near-white.
+
+The overlay is the fact and the preset is a guess, so `sectionClasses` and
+`sectionBgClass` now follow the overlay for a banner-rooted section:
+`sbs-hero-p89-v3`, `p5-v2`, `p5-v4` and `p30-v4` render dark type; every genuinely
+dark-washed hero and CTA still renders light. A pale wash below 45% opacity is a
+haze over a photograph rather than a ground, so those keep the preset and the
+rendered-legibility pass has the last word.
+
+`sbs-hero-p89-v3`'s wash was also a pale *blue*, which behind a headline reads as
+a mistake rather than a decision. It is white.
+
+### The logo rail is a rail you can fill
+
+`marquee.images` listed seven real client logos by URL from the exporting site.
+They are gone. What ships instead is six inline SVG marks drawn in
+`currentColor`, so one set reads on a dark banner and on a light one and nothing
+is fetched from anywhere — and they are abstract rather than imitations, because a
+fake wordmark in a client concept says something nobody agreed to.
+
+The rail also had no editor, which is why it was still showing Walmart. The media
+tab now lists its logos: an address each (SVG or PNG) and a company name, with
+add and remove. Clearing an address returns that slot to its placeholder rather
+than leaving a hole in a scrolling track. On export a placeholder becomes a
+`data:image/svg+xml` attachment — an image block with no `url` is an empty slot in
+WordPress, the importer leaves a data URI alone because it only sideloads
+`http(s)`, and the browser renders it directly.
+
+### A card grid that never said how many across
+
+`sbs-stats-p29-v1` was the reported case: thirteen cards, no column count, and
+`fidelityNumber(undefined, 1, 6)` is one — so thirteen full-width bands. The count
+is now written into the data from what each grid holds, capped at the three a card
+is designed around, with `fidelityEnsureSection` as the net under it for a pattern
+added later. A pattern that *states* one column still means it: a stacked timeline
+is one event per row.
+
+Both slider patterns said two and one respectively, which is why they looked
+alike and why one card filled the band. Slider and testimonial grids are three
+across, and `dstSliderSettings.bleedRightVisibleItems` follows.
+
+### A column's picture is shown whole
+
+`.ds-column .dst-media` and `.dst-content2__col .dst-media` were capped at
+`62vh`, which crops a portrait image in a two-column band and shows its middle
+rather than its composition. There is no reason for a column's own media to be
+measured against the viewport; it is `100%`.
+
+### Coverage
+
+`tests/browser/pattern-hygiene.spec.mjs` (11) sweeps **every** pattern rather than
+the handful that were reported, because the reported ones were only the ones
+somebody happened to look at: no rendered URL names the staging install, every
+card scrim is the renderer's own, no grid falls back to one card per row, every
+media slot shows a picture, pale overlays get dark type and dark ones keep light,
+the rail ships inline marks and fetches nothing, a real logo goes in and comes
+out, and no column media is capped to the viewport.
+
+Four existing tests asserted values that were deliberately changed — the pale
+blue, and the hard black card scrim — and were updated to assert the new ones
+rather than being loosened.
+
+### A dropped document is attached, not pasted
+
+Dropping the client's PDF used to tip its whole text into the brief textarea.
+That is the wrong place for it twice over: three pages of somebody else's
+document buries the paragraph the strategist wrote in a box they are meant to
+keep editing, and it makes a *document* look like something they typed.
+
+A document is now attached. It shows as its own name with a page icon, its kind
+and how much was read out of it, beside a button that takes it off again. The
+words never enter the textarea.
+
+    ┌──────────────────────────────────────────────┐
+    │  📄  Red Moon Motorcycles-Intro Notes.pdf  × │
+    │      PDF · 6,214 characters read              │
+    └──────────────────────────────────────────────┘
+
+`briefSourceText()` is the single place that decides what "the brief" is: the
+typed paragraph, then each attachment announced by its own file name. Everything
+downstream reads it, because everything has to agree on the answer — the request
+the brain receives, the length the button is gated on, the character counter, and
+the comparison that decides whether the concepts have gone stale. The model is
+being asked to weigh several sources, and an unlabelled wall of concatenated text
+hides which sentence came from the client's brief and which from a rate card that
+happened to be in the same folder.
+
+Which means **an attachment on its own is a brief**. The button's gate counts the
+paragraph and the attachments together, so a client who sent a PDF and nothing
+else does not have to retype it to press *Read my brief and build 3 concepts*.
+Removing an attachment makes the concepts stale exactly as editing the paragraph
+does, and a file dropped twice is one attachment rather than two.
+
+The advanced builder still fills its individual brief fields from the document,
+because it is unusable without them. What changed there is that the internal note
+is left alone: it used to be overwritten with the whole document, which is the
+same problem in a different box.
+
+Ten tests in `brief-documents.spec.mjs`, rewritten around the new behaviour: the
+chip and its icon, the textarea left untouched, the words reaching the brain
+under the document's name, removal, the duplicate drop, two documents at once, a
+real `.docx`, a browser-printed PDF, and both builders.
+
+### The export writes media the way the patterns write it
+
+All 169 registered pattern files agree on how DST stores a picture. The export
+had drifted to a shape of its own, and a block handed an object it has no reader
+for renders nothing:
+
+    every pattern   c-media.media = {lazyLoad, primaryType, videoExternal,
+                                     imagePrimary:{id,url,alt,mimeType,
+                                     mediaType,size},
+                                     style:{desktop:{mediaRatio,focalPoint},
+                                            mobile:{…}, borderRadius}}
+    the export      c-media.media = {src, alt, ratioDesktop:'16/9'}
+
+    every pattern   backgroundImage:[{id, desktop:{media:{id,url,mime,type},
+                                      fixed,focal,size,width}, mobile:{…},
+                                      lazy, hideMobile, posterImage,
+                                      fetchPriority, overlay, overlayEnabled,
+                                      overlayOpacity}]
+    the export      backgroundImage:[{src, desktop:{size,focal}, …}]
+
+The `v13` layer converts at the export boundary — backgrounds, the three media
+blocks, card media and clips, and the marquee rail — and keeps the builder's own
+`src`/`alt` alongside the DST shape so the preview, the audit and re-importing a
+builder export all still work.
+
+Two details decide whether an import is usable rather than merely plausible.
+Every media object now keeps an `id` key, even at `0`: the importer sideloads a
+URL and writes the new attachment id back only into a key that already exists —
+`array_key_exists( 'id', $value )` — so without the key the page never learns
+which attachment it got. And `mime`/`mimeType` is filled in from the file
+extension, because DST decides between an `<img>` and a `<video>` on the type,
+and an empty type on an `.mp4` is a still image that never plays.
+
+### A band keeps its own background
+
+`normalizeExportSection` deleted `backgroundImage` and `backgroundColor` from
+every section that was not a `dst-banner`, and `makeFullBleedBand` replaced an
+inverted band's photograph with a flat token colour. Two thirds of the library is
+rooted in a wrapper, so this was most of the page — and worse than losing the
+picture, it made the export disagree with the preview that had just been
+approved, because the preview renders both. Sixteen patterns put their photograph
+on a wrapper or a column set; all sixteen now export it.
+
+### The catalogue agrees with the patterns it describes
+
+Each pattern shipped its own `counts`, `flags` and one-line `look`, and all three
+had drifted from the trees. This is not cosmetic: `v8Score` reads the flags and
+counts to decide which pattern a concept gets.
+
+    flags.media contradicted the tree on   92 patterns
+    counts contradicted the tree on       101 patterns
+    look named a count it does not hold     10 patterns
+
+The default hero declared itself photograph-free while carrying a background
+image, so every concept that asked for dominant imagery scored its own default
+hero *down*. All three are now derived at boot from the tree that will actually
+be rendered, so the drift cannot come back — there is one source of truth and it
+is the pattern.
+
+Correcting the flag truthfully would have handed the "carries photography" bonus
+to 119 of 156 patterns and flattened the distinction the imagery dial exists to
+make, so `flags.mediaLed` was added beside it: the sharper half, where the
+section's own ground is a photograph. A concept asking for dominant imagery now
+prefers those, and still prefers a card grid with pictures over a band with none.
+
+### The staging host, repaired
+
+262 media URLs across 76 patterns pointed at `dst.dsstaging1.local`. `.local` is
+reserved for mDNS, so `download_url()` cannot fetch it and
+`wp_http_validate_url()` will not pass it — the importer records "could not
+sideload" and leaves a dead URL in the page, which looks filled until it ships.
+The pattern files name the real host; it is put back at boot.
+
+### The registry stopped deleting real attributes
+
+The export deletes any attribute the registry does not list, which is the only
+thing stopping a builder-internal key reaching WordPress. But the registry is a
+snapshot, and where it had fallen behind the theme it was deleting attributes the
+patterns use: both slider controls (so slider patterns imported as static grids),
+a card overlay strength, and `c-heading.description`, which is *copy*. Ten
+attribute descriptors were added to `src/data/dst-data.json`, so the browser
+runtime and the PHP importer tests agree on what is real.
+
+### Every control in the module editor lands in the export
+
+`tests/browser/editor-properties.spec.mjs` drives every binding the module editor
+renders — every family, both views, a real `input` event each — and checks the
+exported artifact afterwards. It found controls that changed nothing at all, each
+fixed at its own cause:
+
+  * **Content width on a banner.** A banner is full-bleed by definition, so the
+    export pins its container to `full` — and the control was writing to the
+    pinned value. What a banner actually has is an *inner* container, which the
+    preview already read. On a hero, "Content width" now does something.
+  * **Hero image treatment.** A split hero was a class in the preview and nothing
+    in the export. DST already has the attribute: the background layer's own
+    `width`. The phone keeps the whole band, because a 55% background beside 45%
+    of nothing is a gap, not a composition.
+  * **Supporting text alignment.** `c-heading` has exactly one alignment pair, so
+    this had no attribute to become: it moved the preview and vanished on export,
+    which meant a page approved with centred supporting text arrived
+    left-aligned. Withdrawn. The heading alignment, which does export, moves both.
+  * **Custom image URL and alt text.** Offered on six families whose pattern
+    renders no media slot, where there was nothing to change. The panel now says
+    so instead.
+  * **List geometry.** Offered on a module whose list had already been rebuilt
+    away by its own content model, from a target recorded before the rebuild.
+    Stale fidelity slices are pruned at sync.
+
+The sweep itself needed care to be worth trusting: a select is tried through
+*every* option and a slider in both directions, because a first alternative that
+happens to resolve to the same exported value is not a dead control, and several
+product rules clamp one way on purpose — a corner-anchored motif is never scaled
+above 1.
+
+### The production form is a decision, not a constant
+
+Ten patterns embed `gravityforms/form`, every one carrying `formId: "1"` from the
+DST staging site. That attribute is exempt from the registry filter, so it reached
+WordPress verbatim — where form 1 is a different form, or none, and the contact
+band imported empty. There was nowhere to say otherwise. The contact editor now
+asks, the preview slot shows what it was told, and the export carries the answer.
+
+### Two patterns added, one un-truncated
+
+`scripts/ingest-patterns.mjs` re-reads named patterns from `patternsSBS/` — not
+the legacy migration, which rewrites everything; this touches only what it is
+asked for and prints what it changed.
+
+  * `sbs-pricing-p26-v1` held 77 of its 137 blocks — 26 of 44 card items, 12 of
+    24 list items — so the second tab of a two-tab pricing table was half empty.
+    It is whole. It was the only truncated tree in the library.
+  * `sbs-hero-p30-v2` and `sbs-hero-p30-v4` were never ingested, while their
+    siblings v1 and v3 were. **156 patterns.**
+
+Five patterns in the builder are not in `patternsSBS/` at all —
+`sbs-logo-p1/p2/p3-v1`, `sbs-cards-p1002/p1003-v1`. They are kept, because the
+families would otherwise have gaps, but they are labelled `builder-placeholder`
+rather than claiming the registered library, and no family defaults to one any
+more: the logo family opened every generated page with `sbs-logo-p2-v1`, which
+nobody can point at.
+
+### The WordPress fixtures are generated, not remembered
+
+`tests/fixtures/wordpress/*` is what `npm run test:wordpress` validates and what
+`npm run test:bundle` zips, and they were recordings of the export shape from
+*before* all of the above — so the PHP importer tests were passing against a page
+the builder no longer produces. A fixture that does not match the product is worse
+than no fixture, because it reports success. `npm run record:wordpress` loads the
+real app in a real browser, calls the same export functions the Export button
+calls, and writes the results back, with `generatedAt` pinned so the diff stays
+readable.
+
+### Coverage
+
+    tests/browser/export-fidelity.spec.mjs     8   the shapes, ids, hosts, backgrounds
+    tests/browser/pattern-fidelity.spec.mjs    7   counts, flags, look, host, registry, defaults
+    tests/browser/editor-properties.spec.mjs   2   every binding, every family, both views
+    tests/browser/module-form.spec.mjs         4   the form id, end to end
+
+Each asserts the agreement rather than a snapshot of it, so a pattern added or
+re-ingested later cannot quietly reintroduce the drift.
+
+### One regression caught on the way
+
+Adding the per-breakpoint descriptor to background layers dropped the `kind` and
+`mime` a clip announces itself with at the layer root, which the preview and the
+importer both still read. Adding the DST shape was not a reason to drop them.
+
 ## 2.7.2 — Editing a module never moves the preview
 
 ### Every property, not only a dropped picture

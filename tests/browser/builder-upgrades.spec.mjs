@@ -429,7 +429,12 @@ test.describe('the one button on the first step', () => {
       .toBe('Copy for hero');
     // And it reached the rendered page, not just the project.
     await expect
-      .poll(() => page.locator('#sitePreview').evaluate((frame) => frame.contentDocument.body.textContent.includes('Copy for hero')))
+      // `body` is null for the instant between two documents, and a poll that
+      // throws there fails on a page that was correct before and after.
+      .poll(() => page.locator('#sitePreview').evaluate((frame) => {
+        const body = frame.contentDocument && frame.contentDocument.body;
+        return Boolean(body && body.textContent.includes('Copy for hero'));
+      }))
       .toBe(true);
   });
 });

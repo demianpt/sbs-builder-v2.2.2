@@ -1,7 +1,7 @@
 import { SECTION_FAMILY_IDS, sectionFamily } from '../../../shared/brief/families.mjs';
 import { outlineFamilies } from '../../../shared/brief/planner.mjs';
 import { briefBrainApi, normalizeApiError } from './api.js';
-import { BRIEF_TEXT_LIMIT, beginJob, briefSignature, buildConceptsRequest, buildContentRequest, buildExpandRequest, buildMediaRequest, buildOutlineRequest, buildUnderstandRequest, endJob, ensureBrainState, ensureMediaState, ensureSimpleState, isBrainBusy, isMediaBusy, isSimpleBusy } from './state.js';
+import { BRIEF_TEXT_LIMIT, beginJob, briefSignature, briefAttachments, briefSourceLength, briefSourceText, buildConceptsRequest, buildContentRequest, buildExpandRequest, buildMediaRequest, buildOutlineRequest, buildUnderstandRequest, endJob, ensureBrainState, ensureMediaState, ensureSimpleState, isBrainBusy, isMediaBusy, isSimpleBusy } from './state.js';
 
 /**
  * The Brief Brain's event layer.
@@ -346,9 +346,11 @@ async function runMediaAsset(context) {
 async function runConcepts(context) {
   const simple = ensureSimpleState(context.project);
   if (isSimpleBusy(simple)) return;
-  const briefText = String(simple.briefText || '').trim();
-  if (briefText.length < 20) {
-    context.announce('Write a few sentences about the project first.');
+  // The brief is the paragraph and the attachments together, so a client's PDF
+  // dropped in on its own is enough to press the button with.
+  const briefText = briefSourceText(context.project);
+  if (briefSourceLength(context.project) < 20) {
+    context.announce('Write a few sentences about the project, or drop the client\u2019s brief in first.');
     return;
   }
   const stage = (name, message) => {
@@ -507,13 +509,16 @@ export function handleBriefBrainEvent(event, context = {}) {
       // re-rendering the textarea the strategist is typing into.
       const trigger = document.querySelector('[data-brain-action="build-concepts"]');
       if (trigger) {
-        const blocked = String(simple.briefText || '').trim().length < 20;
+        const blocked = briefSourceLength(context.project) < 20;
         trigger.disabled = blocked;
         if (blocked) trigger.setAttribute('aria-disabled', 'true');
         else trigger.removeAttribute('aria-disabled');
       }
       const counter = document.querySelector('.brief-checklist em');
-      if (counter) counter.textContent = `${String(simple.briefText || '').trim().length.toLocaleString()} / ${BRIEF_TEXT_LIMIT.toLocaleString()} characters`;
+      if (counter) {
+        const attached = briefAttachments(context.project).length;
+        counter.textContent = `${briefSourceLength(context.project).toLocaleString()} / ${BRIEF_TEXT_LIMIT.toLocaleString()} characters${attached ? ` · ${attached} attached` : ''}`;
+      }
       return true;
     }
     if (field) {

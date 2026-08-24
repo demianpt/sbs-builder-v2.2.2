@@ -24,7 +24,7 @@ if ( is_wp_error( $result ) ) {
 	$errors[] = $result->get_error_message();
 	$result = array( 'content' => '', 'blocks' => 0, 'components' => array(), 'warnings' => array() );
 }
-if ( count( $sections ) !== 154 ) $errors[] = 'Expected 154 patterns, found ' . count( $sections );
+if ( count( $sections ) !== 156 ) $errors[] = 'Expected 156 patterns, found ' . count( $sections );
 if ( str_contains( $result['content'], 'sbs-figma-snapshot-image' ) ) $errors[] = 'Screenshot markup was serialized.';
 if ( ! str_contains( $result['content'], '<!-- wp:ds-blocks/' ) ) $errors[] = 'No DST block comments were serialized.';
 if ( count( $result['components'] ) < 28 ) $errors[] = 'Too few component types were serialized.';

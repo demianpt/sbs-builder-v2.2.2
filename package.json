@@ -1,6 +1,6 @@
 {
   "name": "sbs-page-builder",
-  "version": "2.7.2",
+  "version": "2.9.0",
   "private": true,
   "description": "One SBS project, 50 production styles across 10 families, three independently editable concept workspaces, two interfaces over one engine.",
   "type": "module",
@@ -21,10 +21,16 @@
     "migrate:legacy": "node scripts/extract-legacy-page.mjs",
     "test:bundle": "node scripts/test-project-bundle.mjs",
     "test:wordpress": "php tests/wordpress/importer-unit.php",
-    "test:handoff": "npm run test:bundle && npm run test:wordpress && npm run test:wordpress:catalog",
+    "test:handoff": "npm run test:bundle && npm run test:wordpress && npm run test:wordpress:catalog && node scripts/verify-against-theme.mjs",
     "test:wordpress:catalog": "php tests/wordpress/importer-catalog-sweep.php",
     "check:stock": "node scripts/check-shutterstock.mjs",
-    "test:upgrade": "node scripts/qa-upgrades.mjs"
+    "test:upgrade": "node scripts/qa-upgrades.mjs",
+    "record:wordpress": "node scripts/record-wordpress-fixtures.mjs",
+    "ingest:patterns": "node scripts/ingest-patterns.mjs",
+    "clean:patterns": "node scripts/clean-patterns.mjs",
+    "build:plugin": "node scripts/build-plugin.mjs",
+    "sync:registry": "node scripts/sync-dst-registry.mjs",
+    "verify:export": "npm run record:wordpress && node scripts/verify-against-theme.mjs"
   },
   "dependencies": {
     "dotenv": "^16.6.1",

@@ -1,7 +1,7 @@
 import { directiveSummary } from '../../../shared/brief/directives.mjs';
 import { SECTION_FAMILIES, sectionFamilyLabel } from '../../../shared/brief/families.mjs';
 import { BRIEF_FIELD_ORDER, briefReadiness } from '../../../shared/brief/schemas.mjs';
-import { BRIEF_TEXT_LIMIT, brainStatusLabel, conceptsAreStale, ensureBrainState, ensureMediaState, ensureSimpleState, hasChosenConcept, isBrainBusy, isMediaBusy, isSimpleBusy, mediaIsStale, understandingIsStale } from './state.js';
+import { BRIEF_TEXT_LIMIT, briefAttachments, briefSourceLength, brainStatusLabel, conceptsAreStale, ensureBrainState, ensureMediaState, ensureSimpleState, hasChosenConcept, isBrainBusy, isMediaBusy, isSimpleBusy, mediaIsStale, understandingIsStale } from './state.js';
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -656,7 +656,11 @@ export function renderSimpleBriefPanel(context = {}) {
   const simple = ensureSimpleState(project);
   const busy = isSimpleBusy(simple);
   const written = String(simple.briefText || '').trim();
-  const stale = conceptsAreStale(simple);
+  // The brief is the paragraph *and* the attachments, so everything the panel
+  // reports and everything it gates on is measured on both.
+  const attachments = briefAttachments(project);
+  const source = briefSourceLength(project);
+  const stale = conceptsAreStale(project);
   const chosen = hasChosenConcept(simple);
 
   return `<section class="${panelClass('brain-panel is-simple', busy)}" data-brain-panel>
@@ -678,13 +682,13 @@ export function renderSimpleBriefPanel(context = {}) {
     <label class="brain-field" for="simple-brief"><span>The project, in your own words</span>
       <textarea id="simple-brief" rows="10" maxlength="${BRIEF_TEXT_LIMIT}" placeholder="${esc(BRIEF_PLACEHOLDER)}" data-brain-field="briefText" data-brain-scope="simple"${off(busy)}>${esc(simple.briefText || '')}</textarea>
     </label>
-    ${typeof context.briefDropZone === 'function' ? context.briefDropZone() : ''}
+    ${typeof context.briefDropZone === 'function' ? context.briefDropZone(attachments) : ''}
     <div class="brief-checklist">
       ${BRIEF_CHECKLIST.map(([key, label]) => {
         const covered = Boolean(simple.readback && simple.readback[key] && !(simple.missingFields || []).includes(key));
         return `<span class="${covered ? 'is-covered' : ''}"><i aria-hidden="true">${covered ? '✓' : '·'}</i>${esc(label)}</span>`;
       }).join('')}
-      <em>${written.length.toLocaleString()} / ${BRIEF_TEXT_LIMIT.toLocaleString()} characters</em>
+      <em>${source.toLocaleString()} / ${BRIEF_TEXT_LIMIT.toLocaleString()} characters${attachments.length ? ` · ${attachments.length} attached` : ''}</em>
     </div>
     ${simple.error ? `<p class="brain-error" role="alert">${esc(simple.error)}</p>` : ''}
     ${stale ? '<p class="brain-hint is-warn">The brief has changed since these concepts were built. Read it again to refresh them.</p>' : ''}
@@ -695,10 +699,12 @@ export function renderSimpleBriefPanel(context = {}) {
         label: simple.concepts.length ? 'Read the brief again' : 'Read my brief and build 3 concepts',
         workingLabel: STAGE_LABELS[simple.stage] || 'Working…',
         busy,
-        disabled: busy || written.length < 20,
+        // An attached document is a brief. Requiring the paragraph as well would
+        // mean retyping what the client already wrote down.
+        disabled: busy || source < 20,
       })}
       ${thinking(busy, simple.liveMessage)}
-      ${written.length < 20 ? '<span class="brain-hint">A few sentences is enough to start.</span>' : ''}
+      ${source < 20 ? '<span class="brain-hint">A few sentences, or the client\u2019s own brief dropped in above.</span>' : ''}
     </div>
     ${busy ? runStages(simple, busy) : ''}
     ${busy ? '' : runReport(simple)}

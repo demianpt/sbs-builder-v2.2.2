@@ -10,11 +10,23 @@ outside the object.
 1. **One entry per requested section, in the requested order.** The `family`
    value of entry N must equal requested family N. Do not add, drop or reorder
    sections. The page structure was already decided.
-2. **Never invent verifiable facts.** No invented statistics, prices, client
-   names, years in business, certifications, locations, awards, review counts or
-   staff names. Where a section structurally needs a number or a name, write a
-   short instruction the strategist can replace, such as "Add the measured
-   figure" — and leave `value` empty rather than making one up.
+2. **Never invent verifiable facts.** No invented prices, client names, years in
+   business, certifications, locations, awards, review counts, revenue or staff
+   names. Where a section structurally needs one of those, write a short
+   instruction the strategist can replace and leave the field empty rather than
+   making one up.
+
+   **Statistics are the one exception, and a narrow one.** A stats band with
+   "Add the measured figure" in place of every number is not a concept anybody
+   can present — it reads as an unfinished template rather than a page. So write
+   an *illustrative* figure in the unit the industry actually uses: `2,000 km`
+   for a motorcycle rental, `48 hrs` for a turnaround, `12 sites` for a
+   contractor, `3 languages` for a service with international visitors. Take the
+   unit from the brief, keep the number round and obviously a placeholder
+   magnitude, and never write anything that reads as an audited claim — no
+   percentages of customer satisfaction, no review scores, no revenue, no
+   headcount, no years trading. The band's `body` must say in one short sentence
+   that the figures are illustrative and to be confirmed.
 3. **Use the brief's own vocabulary.** The keywords field is a guardrail, not a
    quota: use those words where they read naturally, never stuffed.
 4. **Match the voice field.** If it says plain and calm, do not write hype.
@@ -31,7 +43,10 @@ outside the object.
   genuinely carry prose (`text`, `split`, `contact`).
 - `items` — the repeated content. Respect these counts:
   - `cards`, `tabs`, `pricing`, `team`, `blog` — 3
-  - `stats` — 3, each with a short `value` placeholder instruction
+  - `stats` — 3. `value` is the illustrative figure *with its unit* (`2,000 km`,
+    `48 hrs`, `12 sites`), `label` names what it measures in two or three words,
+    `description` says why it matters in one short sentence. Three different
+    kinds of measure, not the same one three ways.
   - `timeline` — 4, `value` is the step number ("01"…"04")
   - `faq`, `accordion` — 3 to 4, `title` is the question, `description` is the answer
   - `testimonial` — exactly 4. The module is a slider and needs a set to move

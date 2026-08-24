@@ -144,9 +144,12 @@ test.describe('a photograph behind copy always gets a wash', () => {
     expect(tint.strength).toBeCloseTo(0.27, 2);
     expect(tint.inverted).toBe(true);
 
-    // A pale wash *is* the ground, so that band reads dark-on-light.
+    // A pale wash *is* the ground, so that band reads dark-on-light. The colour
+    // itself was a pale *blue* in the export, which read as a mistake rather
+    // than a decision behind a headline; it is white now.
     const pale = await renderPattern(page, 'sbs-hero-p89-v3');
-    expect(pale.colour).toContain('#E3F8FF');
+    expect(pale.colour).toContain('#ffffff');
+    expect(pale.colour).not.toMatch(/E3F8FF/i);
     expect(pale.inverted).toBe(false);
   });
 

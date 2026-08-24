@@ -3,7 +3,7 @@ import catalog from '../../src/data/dst-data.json';
 
 describe('baseline DST catalog contract', () => {
   it('retains the complete registered catalog and existing archetypes', () => {
-    expect(catalog.patterns).toHaveLength(154);
+    expect(catalog.patterns).toHaveLength(156);
     /*
      * One canonical catalogue. This expected 15 while the data file shipped 20
      * and the runtime pushed 15 more on at boot, so the assertion was measuring

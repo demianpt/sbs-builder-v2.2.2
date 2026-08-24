@@ -35,15 +35,48 @@ $nav_result = $converter->navigation_to_content( $navigation, 123 );
 $check( ! is_wp_error( $nav_result ), 'navigation conversion succeeds' );
 $nav_content = is_wp_error( $nav_result ) ? '' : $nav_result['content'];
 $check( str_contains( $nav_content, '<!-- wp:ds-blocks/dst-navigation' ), 'navigation becomes editable DST navigation blocks' );
-$check( str_contains( $nav_content, '"menuValue":"123"' ), 'WordPress menu ID is injected into navigation block' );
+// The theme's menu block reads a *location*, not an id: `menuSource: 'location'`
+// with `menuLocation: 'primary-menu'`, which the importer has already pointed at
+// the menu it built. Writing an id as well would add an attribute the block does
+// not declare — the 1.0 importer did exactly that, and the header imported empty.
+$check( str_contains( $nav_content, '"menuSource":"location"' ), 'the navigation menu is bound by theme location' );
+$check( str_contains( $nav_content, '"menuLocation":"primary-menu"' ), 'the primary menu location is named' );
+$check( ! str_contains( $nav_content, 'menuValue' ), 'no menu id is written where a location already binds' );
+// Straight off the theme's own parts/header.html.
+$check( str_contains( $nav_content, '<!-- wp:ds-blocks/dst-navigation-main' ), 'the navigation main row is a real block' );
+$check( str_contains( $nav_content, '<!-- wp:ds-blocks/dst-navigation-mobile' ), 'the mobile navigation is a real block' );
+$check( str_contains( $nav_content, '"navigationArea":"logo"' ), 'the navigation areas are named' );
+$check( str_contains( $nav_content, '<!-- wp:ds-blocks/dst-site-logo' ), 'the site logo is the theme logo block' );
 $check( ( $nav_result['blocks'] ?? 0 ) < ( $page_result['blocks'] ?? PHP_INT_MAX ), 'converter counters reset between artifacts' );
 
 $footer_result = $converter->footer_to_content( $footer );
 $check( ! is_wp_error( $footer_result ), 'footer conversion succeeds' );
 $footer_content = is_wp_error( $footer_result ) ? '' : $footer_result['content'];
-$check( str_contains( $footer_content, '<!-- wp:ds-blocks/dst-wrapper' ), 'footer becomes an editable DST wrapper' );
-$check( str_contains( $footer_content, '<!-- wp:ds-blocks/c-heading' ), 'footer menu headings are real heading blocks' );
-$check( str_contains( $footer_content, '<!-- wp:ds-blocks/c-list' ), 'footer links are editable list blocks' );
+// The footer is the theme's own footer family now, not a wrapper standing in for
+// it: three sections, each naming its area, exactly as parts/footer.html does.
+$check( str_contains( $footer_content, '<!-- wp:ds-blocks/dst-footer ' ) || str_contains( $footer_content, '<!-- wp:ds-blocks/dst-footer\n' ) || str_contains( $footer_content, '<!-- wp:ds-blocks/dst-footer {' ), 'footer is the theme footer block' );
+$check( str_contains( $footer_content, '<!-- wp:ds-blocks/dst-footer-section' ), 'footer rows are footer sections' );
+$check( str_contains( $footer_content, '<!-- wp:ds-blocks/dst-footer-slot' ), 'footer columns are footer slots' );
+$check( str_contains( $footer_content, '"sectionArea":"middle"' ), 'the middle row names its area' );
+$check( str_contains( $footer_content, '<!-- wp:ds-blocks/dst-block-title' ), 'footer column headings are the theme title block' );
+// `c-list-item` has listTitle/listSubTitle/heroText/icon and no link attribute at
+// all, so a link column built from list items imports as unclickable words.
+$check( str_contains( $footer_content, '<a href=' ), 'footer links are anchors that work' );
+$check( str_contains( $footer_content, '<!-- wp:ds-blocks/dst-social-networks' ), 'the social row is the theme social block' );
+
+/*
+ * Paragraph copy has to arrive.
+ *
+ * The builder moves a paragraph's words onto the node — `node.text` — and the 1.0
+ * converter only read `attributes.content` and `content.text`. So every paragraph
+ * in every artifact imported blank: body copy, the footer description, the legal
+ * line, the announcement bar. Nothing reported it, because an empty paragraph is
+ * a perfectly valid block.
+ */
+$page_paragraphs = substr_count( $page_content, '<!-- wp:paragraph' ) + substr_count( $page_content, '<!-- wp:core/paragraph' );
+$check( $page_paragraphs > 0, 'the page has paragraphs at all' );
+$check( ! str_contains( $page_content, '<p></p>' ), 'no paragraph imports empty' );
+$check( ! str_contains( $footer_content, '<p></p>' ), 'no footer paragraph imports empty' );
 
 $warnings = array();
 $split = SBS_Importer_Package::split_artifacts( $complete, $warnings );

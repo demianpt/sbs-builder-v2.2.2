@@ -68,7 +68,7 @@ final class SBS_Importer_Admin {
 			$warnings = array_merge( $warnings, $media->sideload_artifacts( $artifacts ) );
 		}
 
-		$result = array( 'page_id' => 0, 'header_id' => 0, 'footer_id' => 0, 'menu_id' => 0, 'theme' => null, 'warnings' => $warnings, 'missing' => $missing, 'details' => array() );
+		$result = array( 'page_id' => 0, 'header_id' => 0, 'footer_id' => 0, 'menu_id' => 0, 'menus' => array(), 'theme' => null, 'warnings' => $warnings, 'missing' => $missing, 'details' => array() );
 		$converter = new SBS_Importer_Block_Converter();
 
 		if ( ! empty( $_POST['import_page'] ) && isset( $artifacts['page'] ) ) {
@@ -95,13 +95,17 @@ final class SBS_Importer_Admin {
 		}
 
 		if ( ! empty( $_POST['import_navigation'] ) && isset( $artifacts['navigation'] ) ) {
-			$menu_title = sanitize_text_field( wp_unslash( $_POST['menu_title'] ?? __( 'SBS Primary Navigation', 'sbs-website-importer' ) ) );
-			$menu_id = SBS_Importer_Services::create_navigation_menu( $artifacts['navigation'], $menu_title );
-			if ( is_wp_error( $menu_id ) ) {
-				$this->redirect_error( $menu_id->get_error_message(), $token );
+			$menu_title = sanitize_text_field( wp_unslash( $_POST['menu_title'] ?? __( 'SBS', 'sbs-website-importer' ) ) );
+			// Every menu the artifact names, each assigned to the theme location its
+			// block expects to read it from. A 2.0 artifact names three: the header
+			// menu and the two footer menus.
+			$menus = SBS_Importer_Services::create_navigation_menus( $artifacts['navigation'], $menu_title );
+			if ( is_wp_error( $menus ) ) {
+				$this->redirect_error( $menus->get_error_message(), $token );
 			}
-			$result['menu_id'] = $menu_id;
-			$converted = $converter->navigation_to_content( $artifacts['navigation'], $menu_id );
+			$result['menus'] = $menus;
+			$result['menu_id'] = (int) ( $menus['primary-menu'] ?? reset( $menus ) ?: 0 );
+			$converted = $converter->navigation_to_content( $artifacts['navigation'], (int) $result['menu_id'] );
 			if ( is_wp_error( $converted ) ) {
 				$this->redirect_error( $converted->get_error_message(), $token );
 			}

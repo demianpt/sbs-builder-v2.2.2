@@ -51,16 +51,23 @@ test('keeps section tones, card overlays, heading copy, and logo marks readable'
     .toEqual(darkHeading);
 
   await page.locator('select[data-bind$=".inverted"]').selectOption('false');
-  await page.locator('select[data-bind$=".contentAlign"]').selectOption('center');
+  // The heading alignment, not a separate content alignment: `c-heading` has one
+  // alignment pair, so that is the control that both moves the preview and
+  // survives into WordPress. The supporting text follows it.
+  await page.locator('select[data-bind$=".headingAlign"]').selectOption('center');
   const lightCenteredText = ['rgb(247, 245, 239)', 'rgb(10, 37, 54)', 'center'];
   await expect(await previewSectionStyles(page, selectedSectionId, '.c-heading__description .sbs-rich-text', lightCenteredText))
     .toEqual(lightCenteredText);
 
   await choosePattern(page, 'sbs-layout-p237-v2');
+  // The scrim is the renderer's own soft bottom-up gradient, not the hard black
+  // one the pattern brought from the site it was exported from — that one hid
+  // the photograph it was supposed to make a title readable on. What matters is
+  // that it darkens towards the copy, which is what these two stops say.
   await expect.poll(() => page.locator('#sitePreview').evaluate((frame) => {
     const scrim = frame.contentDocument.querySelector('.dst-card--media-background .c-block__scrim');
     return scrim ? getComputedStyle(scrim).backgroundImage : '';
-  })).toContain('rgb(0, 0, 0)');
+  })).toMatch(/linear-gradient\(rgba\(7, 28, 42, 0\.02\), rgba\(7, 28, 42, 0\.92\)\)/);
 
   await choosePattern(page, 'sbs-logo-p2-v1');
   await expect.poll(() => page.locator('#sitePreview').evaluate((frame) => frame.contentDocument.querySelectorAll('.sbs-logo-orb').length)).toBeGreaterThan(2);

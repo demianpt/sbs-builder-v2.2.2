@@ -10,10 +10,13 @@ import { useAdvancedBuilder } from './support/builder-mode.mjs';
  * in the browser — nothing is uploaded — and handed to the same brain the
  * textarea feeds.
  *
- * Where it lands is the difference between the two builders. The simple builder
- * wants the paragraph, because that is its first step. The advanced builder wants
- * the individual fields, so the paragraph goes through the same splitter a
- * simple-builder import uses and the document is kept verbatim as the note.
+ * A document is *attached*, not pasted. It shows as its own name with its kind
+ * and its length, and its words never enter the textarea: tipping three pages of
+ * somebody else's PDF into the box the strategist is meant to keep editing
+ * buries their paragraph in it, and makes a document look like something they
+ * typed. The brain reads the paragraph and every attachment together, so one
+ * press still sees the lot — and an attachment on its own is a brief, because a
+ * client who sent a PDF should not have to retype it.
  */
 
 const BRIEF = 'Harbour Dental is a family practice in Portsmouth offering routine and emergency care. The page has to get a nervous adult patient to book their first appointment online. The tone must stay calm, plain and reassuring throughout.';
@@ -67,7 +70,15 @@ async function dropFiles(page, files, { dropIt = true } = {}) {
   }, { list: files, drop: dropIt });
 }
 
+/** The paragraph in the textarea — what the strategist typed, and only that. */
 const briefText = (page) => page.evaluate(() => window.__SBS_TEST_API.simple.ensure().briefText || '');
+
+/** The whole brief as the brain receives it: the paragraph plus every attachment. */
+const briefSource = (page) => page.evaluate(() => window.__SBS_TEST_API.documents.source());
+
+/** What is attached, by name and kind. */
+const attached = (page) => page.evaluate(() => window.__SBS_TEST_API.documents.attached()
+  .map((file) => ({ name: file.name, kind: file.kind, characters: file.characters })));
 
 test.describe('the brief can arrive as a file', () => {
   test('a file dragged anywhere over the app opens one target that cannot be missed', async ({ page }) => {
@@ -79,21 +90,62 @@ test.describe('the brief can arrive as a file', () => {
     await page.evaluate(() => window.dispatchEvent(new DragEvent('dragleave', { bubbles: true, dataTransfer: new DataTransfer() })));
   });
 
-  test('the simple builder puts a dropped text file straight into the brief', async ({ page }) => {
+  test('a dropped file is attached by name, and its words go to the brain', async ({ page }) => {
     await open(page);
     await dropFiles(page, [{ name: 'harbour-brief.txt', text: BRIEF, type: 'text/plain' }]);
-    await expect.poll(() => briefText(page)).toBe(BRIEF);
-    // The textarea itself, not just the state behind it.
-    await expect(page.locator('#simple-brief')).toHaveValue(BRIEF);
+
+    // It shows as a document: its name, its kind, its length.
+    await expect.poll(() => attached(page)).toEqual([
+      { name: 'harbour-brief.txt', kind: 'plain', characters: BRIEF.length },
+    ]);
+    const chip = page.locator('#editorInner .brief-file');
+    await expect(chip).toContainText('harbour-brief.txt');
+    await expect(chip).toContainText('Text file');
+    await expect(chip.locator('svg')).toBeVisible();
+
+    // And the textarea is left alone — this is the whole point.
+    expect(await briefText(page)).toBe('');
+    await expect(page.locator('#simple-brief')).toHaveValue('');
+
+    // The brain still gets the words, under the document's own name.
+    expect(await briefSource(page)).toContain('nervous adult patient');
+    expect(await briefSource(page)).toContain('harbour-brief.txt');
+
     await expect(page.locator('#toast')).toContainText('harbour-brief.txt');
-    // Long enough to run, so the button that reads it is live.
+    // An attachment on its own is a brief, so the button that reads it is live.
     await expect(page.locator('[data-brain-action="build-concepts"]')).toBeEnabled();
+    await expect(page.locator('.brief-checklist em')).toContainText('1 attached');
+  });
+
+  test('an attachment can be taken off again', async ({ page }) => {
+    await open(page);
+    await dropFiles(page, [{ name: 'harbour-brief.txt', text: BRIEF, type: 'text/plain' }]);
+    await expect(page.locator('#editorInner .brief-file')).toHaveCount(1);
+
+    await page.locator('[data-brief-file-remove]').click();
+
+    await expect(page.locator('#editorInner .brief-file')).toHaveCount(0);
+    expect(await attached(page)).toEqual([]);
+    expect(await briefSource(page)).toBe('');
+    await expect(page.locator('#toast')).toContainText('removed from the brief');
+    // And the button goes back to needing a brief.
+    await expect(page.locator('[data-brain-action="build-concepts"]')).toBeDisabled();
+  });
+
+  test('the same file dropped twice is one attachment', async ({ page }) => {
+    await open(page);
+    await dropFiles(page, [{ name: 'harbour-brief.txt', text: BRIEF, type: 'text/plain' }]);
+    await expect(page.locator('#editorInner .brief-file')).toHaveCount(1);
+    await dropFiles(page, [{ name: 'harbour-brief.txt', text: BRIEF, type: 'text/plain' }]);
+    await expect(page.locator('#editorInner .brief-file')).toHaveCount(1);
   });
 
   test('a real .docx is unpacked and read in the browser', async ({ page }) => {
     await open(page);
     await dropFiles(page, [{ name: 'discovery.docx', text: BRIEF, docx: true }]);
-    await expect.poll(() => briefText(page)).toContain('nervous adult patient');
+    await expect.poll(() => briefSource(page)).toContain('nervous adult patient');
+    expect(await attached(page)).toMatchObject([{ name: 'discovery.docx', kind: 'docx' }]);
+    await expect(page.locator('#editorInner .brief-file')).toContainText('Word document');
   });
 
   /**
@@ -119,8 +171,12 @@ test.describe('the brief can arrive as a file', () => {
 
     await open(page);
     await dropFiles(page, [{ name: 'red-moon.pdf', type: 'application/pdf', bytes: [...printed] }]);
-    await expect.poll(() => briefText(page), { timeout: 15_000 }).toContain('Red Moon Motorcycles');
-    const brief = await briefText(page);
+    await expect.poll(() => briefSource(page), { timeout: 15_000 }).toContain('Red Moon Motorcycles');
+    expect(await attached(page)).toMatchObject([{ name: 'red-moon.pdf', kind: 'pdf' }]);
+    await expect(page.locator('#editorInner .brief-file')).toContainText('PDF');
+    // The textarea stays the strategist's own.
+    expect(await briefText(page)).toBe('');
+    const brief = await briefSource(page);
     expect(brief).toContain('premium motorcycle rental near the Grand Canyon');
     // Word gaps and hyphens both survive, which is what separates a readable
     // brief from a wall of joined-up letters.
@@ -128,25 +184,35 @@ test.describe('the brief can arrive as a file', () => {
     expect(brief).toContain('experience-seekers');
   });
 
-  test('two documents are joined under their own names', async ({ page }) => {
+  test('two documents are two attachments, each under its own name', async ({ page }) => {
     await open(page);
     await dropFiles(page, [
       { name: 'goal.txt', text: BRIEF, type: 'text/plain' },
       { name: 'tone-of-voice.txt', text: 'Plain English. Short sentences. Never clinical, never salesy, and never exclamation marks.', type: 'text/plain' },
     ]);
-    await expect.poll(() => briefText(page)).toContain('goal.txt');
-    expect(await briefText(page)).toContain('tone-of-voice.txt');
-    expect(await briefText(page)).toContain('Never clinical');
+    await expect(page.locator('#editorInner .brief-file')).toHaveCount(2);
+    expect((await attached(page)).map((file) => file.name)).toEqual(['goal.txt', 'tone-of-voice.txt']);
+    // The brain sees both, and can tell which sentence came from which document.
+    const source = await briefSource(page);
+    expect(source).toContain('goal.txt');
+    expect(source).toContain('tone-of-voice.txt');
+    expect(source).toContain('Never clinical');
+    await expect(page.locator('.brief-checklist em')).toContainText('2 attached');
   });
 
-  test('a brief already written is kept and the document is added under it', async ({ page }) => {
+  test('a brief already typed is left exactly as it was', async ({ page }) => {
     await open(page);
     await page.locator('#simple-brief').fill('What the strategist typed first.');
     await dropFiles(page, [{ name: 'extra.txt', text: BRIEF, type: 'text/plain' }]);
-    await expect.poll(() => briefText(page)).toContain('extra.txt');
-    const merged = await briefText(page);
-    expect(merged.startsWith('What the strategist typed first.')).toBe(true);
-    expect(merged).toContain('nervous adult patient');
+    await expect(page.locator('#editorInner .brief-file')).toHaveCount(1);
+
+    // Not appended to, not replaced: untouched.
+    await expect(page.locator('#simple-brief')).toHaveValue('What the strategist typed first.');
+    expect(await briefText(page)).toBe('What the strategist typed first.');
+    // The brain reads the paragraph first, then the document.
+    const source = await briefSource(page);
+    expect(source.startsWith('What the strategist typed first.')).toBe(true);
+    expect(source).toContain('nervous adult patient');
   });
 
   test('a state change survives the render it causes, cursor still in the field', async ({ page }) => {
@@ -159,11 +225,13 @@ test.describe('the brief can arrive as a file', () => {
     await page.locator('#simple-brief').click();
     await page.locator('#simple-brief').fill('Half a sentence typed by hand');
     await dropFiles(page, [{ name: 'client-brief.txt', text: BRIEF, type: 'text/plain' }]);
-    await expect.poll(() => briefText(page)).toContain('client-brief.txt');
+    await expect.poll(() => attached(page)).toMatchObject([{ name: 'client-brief.txt' }]);
     // Twice over: the same window in which the revert used to land.
     await page.waitForTimeout(700);
-    expect(await briefText(page)).toContain('nervous adult patient');
-    await expect(page.locator('#simple-brief')).toHaveValue(/nervous adult patient/);
+    expect((await attached(page)).length).toBe(1);
+    expect(await briefSource(page)).toContain('nervous adult patient');
+    // And the half-sentence the strategist was mid-way through is still theirs.
+    await expect(page.locator('#simple-brief')).toHaveValue('Half a sentence typed by hand');
   });
 
   test('a format it cannot open is refused by name, with the reason', async ({ page }) => {
@@ -172,6 +240,7 @@ test.describe('the brief can arrive as a file', () => {
     await expect(page.locator('#toast')).toContainText('legacy brief.doc');
     await expect(page.locator('#toast')).toContainText('save it as .docx or PDF');
     expect(await briefText(page)).toBe('');
+    expect(await attached(page)).toEqual([]);
   });
 
   test('the advanced builder splits the document into its brief fields', async ({ page }) => {
@@ -200,9 +269,11 @@ test.describe('the brief can arrive as a file', () => {
     const brief = await page.evaluate(() => window.__SBS_TEST_API.state.project.brief);
     expect(brief.audience).toContain('Nervous adult patients');
     expect(brief.clientName).toBe('Harbour Dental');
-    // The document itself is kept whole, not only the fields drawn out of it.
-    expect(brief.notes).toContain('nervous adult patient');
-    await expect(page.locator('#toast')).toContainText('split into the brief fields');
+    // The document is attached rather than dumped into the internal note — the
+    // same "pasted into a textarea" problem in a different box.
+    expect(brief.notes).not.toContain('nervous adult patient');
+    expect(await attached(page)).toMatchObject([{ name: 'brief.txt' }]);
+    await expect(page.locator('#toast')).toContainText('filled in from it');
     expect(await page.evaluate(() => window.__SBS_TEST_API.state.currentStep)).toBe(0);
   });
 
@@ -214,8 +285,11 @@ test.describe('the brief can arrive as a file', () => {
     }));
     await open(page, { advanced: true });
     await dropFiles(page, [{ name: 'brief.txt', text: BRIEF, type: 'text/plain' }]);
-    await expect.poll(() => page.evaluate(() => window.__SBS_TEST_API.state.project.brief.notes)).toContain('nervous adult patient');
-    await expect(page.locator('#toast')).toContainText('fill the fields in yourself');
+    // The words are not lost when the splitter is unreachable: they are on the
+    // attachment, which is where they live now.
+    await expect.poll(() => briefSource(page)).toContain('nervous adult patient');
+    expect(await attached(page)).toMatchObject([{ name: 'brief.txt' }]);
+    await expect(page.locator('#toast')).toContainText('fill them in yourself');
   });
 
   test('both builders show the drop zone in their brief step', async ({ page }) => {

@@ -349,6 +349,36 @@ button,input,textarea,select{font:inherit}button{color:inherit}a{color:inherit}.
 .brief-file-drop__pick span{font-size:11px;line-height:1.5;color:var(--ui-muted)}
 .brief-file-drop__pick:focus-within{outline:2px solid var(--ui-accent);outline-offset:2px}
 
+/* An attached document reads as a document: its own name, its kind, and the
+   length of what was read out of it — never its contents. */
+.brief-files{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.brief-file{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 10px;
+  border:1px solid #ddd8cf;background:#fff;
+}
+.brief-file__icon{
+  flex:none;width:26px;height:26px;
+  display:grid;place-items:center;
+  color:var(--ui-accent);
+}
+.brief-file__icon svg{width:20px;height:20px}
+.brief-file__body{display:flex;flex-direction:column;gap:1px;min-width:0}
+.brief-file__body b{
+  font-size:11.5px;font-weight:600;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.brief-file__body span{font-size:10.5px;color:var(--ui-muted);font-variant-numeric:tabular-nums}
+.brief-file__remove{
+  flex:none;margin-left:auto;
+  width:24px;height:24px;
+  border:1px solid #ddd8cf;background:#faf9f6;
+  font-size:15px;line-height:1;color:var(--ui-muted);
+  cursor:pointer;
+}
+.brief-file__remove:hover{border-color:var(--ui-accent);color:var(--ui-accent)}
+.brief-file__remove:focus-visible{outline:2px solid var(--ui-accent);outline-offset:2px}
+
 .brief-drop{position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:rgba(28,25,22,.5);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
 .brief-drop[hidden]{display:none}
 .brief-drop__card{
