@@ -104,7 +104,11 @@ html{overflow-x:clip}
    left:-1.5*dot, and with the content POSITIONED the offset resolved against the content box
    instead of the item. Measured on willow-lane: dot at x=294, rail at x=422, 128px apart. The
    two must share the item as their containing block to land on one vertical line. */
-.list-timeline .dst-list__content{display:flex;align-items:flex-start;gap:1.2rem;position:unset;z-index:1}
+/* A timeline entry stacks. Row was the default, which put the counter beside the
+   title and squeezed the copy into whatever was left; column gives each entry its
+   own measure, and the bottom margin is the gap between entries the row layout
+   never needed. */
+.list-timeline .dst-list__content{display:flex;flex-direction:column;align-items:flex-start;gap:1.2rem;margin-bottom:2rem;position:unset;z-index:1}
 /* the theme's `:has(.dst-list__hero)` branch — when a counter is present the ITEM's own dot is
    suppressed and redrawn on the hero, so the number sits in the dot's place and pins with it.
    The preview drew the item dot unconditionally and never drew the hero's, so a numbered timeline
@@ -113,7 +117,7 @@ html{overflow-x:clip}
 .list-timeline .dst-list__item:has(.dst-list__hero)::after{display:none}
 .list-timeline .dst-list__item:has(.dst-list__hero) .dst-list__content{padding:var(--dst-list__item-padding,0)}
 .list-timeline .dst-list__item:has(.dst-list__hero) .dst-list__content::after{height:calc(100% - var(--dst-list__dot-size,2rem)*0.5)}
-.list-timeline .dst-list__item:has(.dst-list__hero) .dst-list__hero{position:sticky;top:calc(var(--dst--top-offset-sticky,0px) + 6vh)}
+.list-timeline .dst-list__item:has(.dst-list__hero) .dst-list__hero{position:sticky;top:var(--sbs-sticky-top,12rem)}
 .list-timeline .dst-list__item:has(.dst-list__hero) .dst-list__hero::after{content:'';margin:auto;width:var(--dst-list__dot-size,2rem);height:var(--dst-list__dot-size,2rem);position:absolute;border-radius:50%;background:radial-gradient(circle,var(--timeline-color) 0,var(--timeline-color) 32%,color-mix(in srgb,var(--timeline-color),var(--dst--secondary-color1)) 33%);inset-block:var(--dst-list__item-padding,0) auto;left:calc(var(--dst-list__dot-size,2rem)*-1.5);z-index:2}
 .list-timeline .dst-list__content::after{content:'';position:absolute;width:var(--dst-list__dot-size,2rem);left:calc(var(--dst-list__dot-size,2rem)*-1.5 - var(--dst-list__dot-size,2rem)*0);inset-block:var(--dst-list__item-padding,0) auto;height:100%;background-image:repeating-linear-gradient(180deg,var(--timeline-color),var(--timeline-color) 10px,transparent 10px,transparent 20px,var(--timeline-color) 20px);background-size:1px 100%;background-position:50% 0;background-repeat:no-repeat;z-index:1;pointer-events:none}
 .list-timeline .dst-list__hero,.list-timeline .dst-list__hero--counter{min-width:calc(var(--dst-list__dot-size,2.2rem) + var(--dot-offset,1rem) + 4ch);text-align:left}
@@ -632,7 +636,7 @@ details[open] .dst-accordion__ar.is-chevron{transform:rotate(180deg)}
 @keyframes dst-highlight{from{background-size:0% 34%}to{background-size:100% 34%}}
 .has-inview-a [data-scroll-effect="highlight"] :is(.dst-accent--highlight){animation:dst-highlight linear both;animation-timeline:view();animation-range:var(--dst-scroll-range,entry 12% cover 40%)}
 .has-inview-a [data-scroll-effect="stack-cards"] .dst-cards__grid{display:block}
-.has-inview-a [data-scroll-effect="stack-cards"] :is(.dst-list__item,.c-block,.dst-card){position:sticky;top:12vh;margin-bottom:2.4rem;box-shadow:0 1.6rem 4rem rgba(11,42,74,.14)}
+.has-inview-a [data-scroll-effect="stack-cards"] :is(.dst-list__item,.c-block,.dst-card){position:sticky;top:var(--sbs-sticky-top,12rem);margin-bottom:2.4rem;box-shadow:0 1.6rem 4rem rgba(11,42,74,.14)}
 @keyframes dst-progress-x{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 .has-inview-a [data-scroll-effect="progress-x"]>*{animation:dst-progress-x linear both;animation-timeline:scroll(root);transform-origin:left center}
 }

@@ -36,7 +36,7 @@
     ]
   },
   "concept": {
-    "id": "concept-mt78dl0h-9-v1-footer",
+    "id": "concept-mt7j5e77-9-v1-footer",
     "name": "Vision Continuity — Footer",
     "conceptId": "v1",
     "slot": "V1",
@@ -1481,7 +1481,7 @@
     }
   },
   "__status": {
-    "builder": "SBS DST Page Builder 2.8.0",
+    "builder": "SBS DST Page Builder 2.9.0",
     "skill": "dst-concept-to-json-patterns",
     "patternsAvailable": 156,
     "generatedAt": "2026-01-01T00:00:00.000Z"

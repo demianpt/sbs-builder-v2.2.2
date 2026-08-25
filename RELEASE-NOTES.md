@@ -1,5 +1,182 @@
 # Release notes
 
+## 3.0.0 — The import is the deliverable
+
+Reported: a slider imported as a plain grid of cards, missing typography, missing
+spacing, missing effects, and a page that did not look like the preview it was
+approved from. All of it was real, and none of it was one bug.
+
+The theme in `~/sites/minisbssandbox` settled every question, because it is the
+only authority on what WordPress will accept.
+
+### An empty button on every hero
+
+All 153 `c-btn` nodes in the catalogue exported with an empty `text`, across 77
+patterns. The preview never draws those — `v2RenderButton` returns nothing
+without a label — so nobody saw them until they arrived as
+`<a class="c-btn -primary"><span class="c-btn__txt"></span></a>`: a real,
+clickable, invisible control. A button with no label is not a setting somebody
+made, it is a slot the content pass never filled, and the export is the last
+place to catch it. Emptied button groups go with them, since a flex row of
+nothing still takes its gap.
+
+Buttons that *do* carry a label are untouched — the default project still exports
+"Request a briefing", "See capabilities" and the rest.
+
+### A slider that was not a slider
+
+`ds-blocks/c-cards` registers `enableDstSlider` and `dstSliderSettings`. Four
+patterns named `enableLightSlider` and `lightSliderSettings` — attributes from an
+older install that exist nowhere in this theme. WordPress keeps an unregistered
+attribute in the markup and ignores it, so the flag was carried faithfully and
+did nothing, and the band rendered as a static grid.
+
+Renamed in the pattern data, along with the other six mismatches an audit of all
+156 patterns found: `c-heading.description` (which is inner blocks, not an
+attribute — the copy becomes a `simple-text` child so the words survive),
+`c-heading.showText`, `c-heading.showButtons`, `c-btn.btnVariant`, and
+`dst-banner-slider.lightSliderSettings`.
+
+**And three cards on a phone.** `dst-slider.js` reads `visibleItemsDesktop`,
+`visibleItemsTablet` and `visibleItemsMobile`. The export sent only
+`bleedRightVisibleItems`, so the slider fell back to its own default and showed
+three cards side by side on mobile where the preview shows one. Now derived from
+the column counts the band already carries, so the two cannot drift.
+
+### Why the existing check said everything was fine
+
+`verify-against-theme.mjs` reported a clean bill of health throughout. It was
+right about what it measured: four recorded fixtures, one sample project, in
+which `enableLightSlider` never appears. Coverage was the bug.
+
+`scripts/verify-catalog-against-theme.mjs` now exports **all 156 patterns** and
+looks up every block and every attribute in the theme's own `block.json` files.
+It found 7 kinds of mismatch on the first run. It reports none now — 1,990 blocks
+and 13,105 attributes checked.
+
+    npm run verify:catalog          # needs npm run dev in another terminal
+
+### The plugin was refusing to write the theme's own controls
+
+The importer asked `WP_Block_Type_Registry` whether a block accepted an attribute
+and used the answer to decide whether to write it. That answer comes from
+`block.json`, and this theme adds a second set of controls from JavaScript, keyed
+on `supports` flags: `dsGapControl` adds `dsPadding`, `dsContainers` adds the
+container family, `dsEffects` adds `dsEffects`. PHP cannot see any of them.
+
+So every scroll effect and band padding carried on a *node* rather than in
+`attributes` was dropped, and the strategist was told those attributes were "not
+registered by the active block package" — attributes the theme applies on every
+page it renders. Full detail in the plugin's own release notes; the plugin is
+**3.0.0**, and it also ships the card scrim the theme has no render path for, and
+enqueues the fonts the concept was designed in.
+
+The plugin's tests could not have caught it: their fixture registry is built from
+the builder's snapshot, which already lists the HOC names. There is now a test
+that registers a block the way WordPress does, and it fails against the old code
+on exactly the three settings that were being lost.
+
+### An import you can take back
+
+Every import records what it did — posts created, posts overwritten with their
+previous content kept verbatim, options and theme mods changed, menus built — and
+the admin screen offers **Undo this import** and **Re-apply**. Both directions
+are stored rather than inferred afterwards. One honest limit, stated on screen: a
+navigation menu deleted by an undo is not recreated, because a menu's items
+belong to it and inventing new ones would be a different menu with the same name.
+
+## 2.9.1 — A band's words against the picture behind them
+
+Two reports, one shape: buttons filled dark and labelled dark, and testimonials
+with dark copy on a dark ground. Both are the same question asked in two places —
+*what is actually behind this text?* — and the honest answer is not available from
+computed styles. A glyph's ground can be a photograph, a scrim, a gradient that
+has faded to nothing, or a fill painted by a button family's pseudo-element.
+
+So this release was measured against rendered pixels. For each render every glyph
+is masked, the frame is screenshotted, and the pixel under each text rect is read
+back off a canvas. That pixel *is* the ground.
+
+### The instrument was wrong first
+
+Worth stating, because the first set of numbers was published and they were
+wrong. The preview iframe lays out at 1440px and is displayed scaled to fit the
+device shell — about 0.52 — so every sample landed roughly twice as far down the
+page as the glyph it claimed to measure. Two of the "1:1" button failures were
+the band's own background, sampled from well below the button.
+
+Three more corrections followed, each caught by the instrument checking itself:
+
+- **Coordinates.** One element is flooded with a colour that appears nowhere else
+  and the pixel this code believes is its centre is read back. If it is not that
+  colour, the run stops instead of publishing. Playwright's own `boundingBox` was
+  no help — it reports in-iframe elements without the shell's scale either.
+- **Motion.** Zeroing CSS durations is not enough: a staged heading reveal adds
+  its classes from JavaScript timers, so the copy arrives word by word and the
+  buttons paint last. The sweep now waits for two byte-identical frames.
+- **Media and inline colour.** A band whose photograph had not decoded sampled as
+  the placeholder behind it, which is how one pattern produced a black ground on
+  one run and a photo ground on the next. And a stylesheet mask loses to an
+  inline `!important` colour, so some glyphs stayed painted and were read as
+  their own ground — an exact 1.00:1, which is what a masking failure looks like.
+
+### The wash has to be strong enough for the ink in it
+
+Both floors are derived rather than chosen. A wash of colour C at alpha a over a
+photograph pixel P paints `a*C + (1-a)*P`, and a photograph can hold any pixel:
+
+    light copy (#f7f5ef)  needs a ground no lighter than channel 113  ->  a >= .64
+    dark copy  (the dark role)  needs no darker than channel 135      ->  a >= .58
+
+Twenty-four grounds were below their floor. `sbs-cta-p15-v3` faded to transparent
+at exactly the height of its heading and put white type on a bright warehouse
+photograph at **1.09:1**; `sbs-hero-p89-v2` washed 27% white and kept its white
+copy at **1.17:1**; `sbs-hero-p1-v1` came to .45 effective and lost its headline
+at **1.33:1**. A gradient's authored alpha is remapped onto `[floor, 1]` rather
+than clamped, so a wash that faded from clear to solid still fades — it fades
+from the floor to solid, and keeps its direction, hue and shape.
+
+**A band that paints no wash is deliberately untouched.** That case already
+belongs to the runtime, which gives any unwashed photograph the brand's dark at
+60% and inverts the copy to suit. Filling the blank in the data would have taken
+that decision away from it and turned fifteen dark media bands pale — a design
+change nobody asked for.
+
+### The ink role is not a dark colour
+
+Five of the ten button families inverted on hover by flooding the shape with
+`#fff` and then labelling it `var(--dst--primary-color3)`. That role is the
+palette's ink, which is dark *only while the palette is light* — on a dark-ground
+palette ink **is** the light colour. Measured at **1.20:1** on Sweep Fill, Split
+Reveal, Corner Cut, Ink Wipe and Magnetic Arrow, for as long as the pointer was
+on the button.
+
+A fill of a known colour now takes a label chosen for that colour:
+`--sbs-on-white` is new, and the accent floods that hard-coded `#fff` use
+`--sbs-on-accent`. The tone-following role survives only as the fallback inside
+the `var()`.
+
+### A pale band re-points its roles instead of overruling them
+
+v2.9.0 forced `.c-btn.-primary{color:…!important}` on a pale band, which assumed
+every family fills the primary with the accent. Three do not: Magnetic Arrow and
+Neon Trace leave it unfilled and take the label from the text role, so the forced
+light label landed on the pale wash itself.
+
+The band now feeds the roles it actually has — the text and heading colours, the
+button colour pairs, the ink role the families flood with, and the page ground
+Depth Press paints its secondary plate on. Each family computes what it was
+written to compute, including its hover, which no `!important` in a band rule
+could reach. The measured pair of colours under the pointer is what the test
+asserts now, rather than the text of a rule.
+
+### sbs-hero-p1-v1
+
+All white copy, which its scrim now carries, and the ordinary accent-filled
+primary rather than the white-on-dark ghost a dark band would otherwise get.
+`groupTheme: 'standard'` says so; it moves the primary only, because an outlined
+button has to be drawn in the band's own ink to be visible at all.
+
 ## 2.9.0 — What imports is what you approved
 
 An imported page did not look like the preview, and the reason was never the
@@ -12,6 +189,118 @@ changes ago.
 block manifests and two template parts, and those are the authority: which blocks
 exist, which attributes each one has, which of those the WordPress editor shows,
 and exactly how a header and a footer are built.
+
+### A pale band paints in the palette's dark role
+
+v2.9.0 made the band's *tone class* follow its overlay, so a hero fading white
+across the frame stopped claiming to be an inverted band. That was half the job.
+The other half is what the standard tone actually resolves to:
+
+    --dst--base-text-color   #EAEAEA   on a dark-ground concept palette
+
+`ink` is the page's text colour, and on a dark-ground palette it is a *pale*
+colour — right against a near-black page, wrong against a white wash. So the
+headline, the pretitle, the supporting line and the outlined button all rendered
+near-white on white in `sbs-hero-p5-v2`, `p5-v4`, `p89-v3`, `p30-v2` and `p30-v4`.
+
+On a pale band the copy now uses the palette's **dark** role explicitly — the one
+colour guaranteed to read on a light ground.
+
+**The buttons had a second, separate cause.** Their variant was chosen from
+`section.layout.inverted` — the family's opening guess — rather than from the tone
+the band resolved to, so two of these heroes rendered `-secondary-inverted`: a
+white outline and a white label on a white wash. The renderer reads
+`ctx.surfaceInverted` now, which is what the banner and wrapper renderers already
+compute from the overlay. An outlined button on a pale band is a dark outline with
+a dark label; hovering fills it with the dark role and puts a light label on it,
+picked from the palette rather than assumed to be white. Focus rings, the text
+button and the hero's scroll cue follow.
+
+**The narrowing that mattered.** The first version of this rule was keyed on
+`is-style-colors-standard`, which is on *every* band that is not inverted — most
+of the page. On a dark-ground palette the dark role is the band's own background,
+so forcing it produced 1:1 contrast: the legibility audit caught **78 bands**, and
+the pricing patterns' featured tier — painted dark on purpose — lost its heading
+entirely. The rules are keyed on a new `is-pale-overlay` class, set only where the
+tone pass judged the overlay to be a light wash over a photograph. Five tests hold
+the pale heroes and two hold the genuinely dark ones, so the next attempt at this
+cannot quietly widen again.
+
+### One sticky offset for the page
+
+`top:0` pinned a held column *under* the sticky header, which covered the top of
+whatever was holding. Every sticky element now reads `--sbs-sticky-top`, set once
+at `12rem`: the held media column, the timeline counter and the stacking cards
+line up with each other instead of each choosing its own. The held column's
+height allowance follows it, so a picture taller than the remaining viewport is
+still bounded rather than cropped at an arbitrary point.
+
+Their rows are also `position:relative` now. A sticky element resolves its offsets
+against the nearest positioned ancestor; without one it pins to the viewport and
+slides out of its own band — which is the difference between sticky working and
+sticky appearing to do nothing.
+
+### The timeline
+
+`sbs-timeline-p1-v2` holds its heading beside the entries: the column carrying it
+is marked `is-sticky-heading`, so the label stays with the entries it labels
+instead of scrolling away halfway down the band. Static under 900px, where one
+column would pin the heading and scroll the entries underneath it.
+
+And `.list-timeline .dst-list__content` stacks. Row was the default, which put the
+counter beside the title and squeezed the copy into whatever was left; column
+gives each entry its own measure, with `margin-bottom: 2rem` as the gap between
+entries that the row layout never needed.
+
+### The brief reader now says *why* it fell back
+
+Every job reported `OLLAMA_UNAVAILABLE`, all four within two seconds, on a server
+that had just logged `ollamaConfigured: true`. Nothing in the log said what
+happened, and there was no way to find out after the fact — because the provider
+discarded the one thing that knew.
+
+`rawRequest` threw `OLLAMA_UNAVAILABLE` with "Ollama could not complete the
+request" for every non-2xx and **never read the response body**. A quota that
+clears in a minute, a key without access to the model, a typo in `OLLAMA_MODEL`
+and a transient 502 all produced the same four identical lines.
+
+    before   {"event":"brief_brain_degraded","job":"concepts","code":"OLLAMA_UNAVAILABLE"}
+
+    after    {"event":"brief_brain_degraded","job":"concepts",
+              "code":"OLLAMA_RATE_LIMITED","status":429,"retryAfter":42,
+              "reason":"rate limit exceeded for this key"}
+
+Three causes an operator can act on now have their own code and their own
+sentence — `OLLAMA_RATE_LIMITED`, `OLLAMA_FORBIDDEN`, `OLLAMA_MODEL_NOT_FOUND` —
+each carrying the provider's own message, bounded to 300 characters so an HTML
+error page from a proxy cannot become the message. The panel's degraded note is
+per-cause too: "the AI model did not answer in time" was being shown for a
+refused key, which is not a timeout and does not improve by waiting.
+
+**A blip is no longer a verdict.** A rate limit or a transient 5xx is retried once
+after a wait — honouring `Retry-After` when the provider sends one — where before
+a moment's congestion degraded the whole run to the built-in planner. A refused
+key and a missing model are still not retried, because waiting does not fix
+either.
+
+**`STOCK_EMPTY` stopped blaming the brief.** When the search terms came from the
+built-in planner because the model had degraded, "name the subject more plainly"
+sent the strategist to rewrite a brief that was fine. It now says the terms were
+the planner's and why the model degraded.
+
+### `npm run check:ollama`
+
+One command that answers the question without needing somebody watching the log:
+configuration, key length (never the key), whether the account offers the
+configured model, and a real one-token generation through the actual provider
+code. It exits non-zero and says plainly that the builder will still work on the
+built-in planner but the copy, the concepts and the imagery search will not be
+written by the model until it is fixed.
+
+Six of the ten new tests assert the refusals — including that the key never
+appears in a message or in `details`, and that a fenced ```` ```json ```` reply is
+read rather than refused, because the model returns one even when a schema is
+sent.
 
 ### Documentation: a deck the team can actually read
 

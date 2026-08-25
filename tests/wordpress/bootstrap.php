@@ -30,7 +30,14 @@ if ( ! class_exists( 'WP_Block_Type_Registry' ) ) {
 		private static ?self $instance = null;
 		private array $registered = array();
 		public static function get_instance(): self { return self::$instance ??= new self(); }
-		public function register_fixture( string $name, array $attributes ): void { $this->registered[ $name ] = (object) array( 'attributes' => array_fill_keys( array_keys( $attributes ), array() ) ); }
+		public function register_fixture( string $name, array $attributes, ?array $supports = null ): void {
+			$type = array( 'attributes' => array_fill_keys( array_keys( $attributes ), array() ) );
+			// `supports` is what a real site exposes and what the HOC attributes are
+			// derived from; a fixture that omits it cannot reproduce production.
+			if ( null !== $supports ) { $type['supports'] = $supports; }
+			$this->registered[ $name ] = (object) $type;
+		}
+		public function forget_fixture( string $name ): void { unset( $this->registered[ $name ] ); }
 		public function get_registered( string $name ) { return $this->registered[ $name ] ?? null; }
 		public function is_registered( string $name ): bool { return isset( $this->registered[ $name ] ); }
 	}

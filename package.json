@@ -20,7 +20,7 @@
     "styles:validate": "node scripts/styles-build.mjs --no-docs",
     "migrate:legacy": "node scripts/extract-legacy-page.mjs",
     "test:bundle": "node scripts/test-project-bundle.mjs",
-    "test:wordpress": "php tests/wordpress/importer-unit.php",
+    "test:wordpress": "php tests/wordpress/importer-unit.php && php tests/wordpress/importer-contract.php",
     "test:handoff": "npm run test:bundle && npm run test:wordpress && npm run test:wordpress:catalog && node scripts/verify-against-theme.mjs",
     "test:wordpress:catalog": "php tests/wordpress/importer-catalog-sweep.php",
     "check:stock": "node scripts/check-shutterstock.mjs",
@@ -31,7 +31,12 @@
     "build:plugin": "node scripts/build-plugin.mjs",
     "sync:registry": "node scripts/sync-dst-registry.mjs",
     "verify:export": "npm run record:wordpress && node scripts/verify-against-theme.mjs",
-    "build:deck": "node scripts/build-deck.mjs"
+    "build:deck": "node scripts/build-deck.mjs",
+    "check:ollama": "node scripts/check-ollama.mjs",
+    "predev:client": "node scripts/free-dev-port.mjs",
+    "free:port": "node scripts/free-dev-port.mjs",
+    "build:sample": "node scripts/test-project-bundle.mjs --deliver",
+    "verify:catalog": "node scripts/verify-catalog-against-theme.mjs"
   },
   "dependencies": {
     "dotenv": "^16.6.1",

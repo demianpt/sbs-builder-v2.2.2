@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 
 require_once $root . '/wordpress-plugin/sbs-website-importer/includes/class-sbs-importer-package.php';
+require_once $root . '/wordpress-plugin/sbs-website-importer/includes/class-sbs-importer-block-contract.php';
 require_once $root . '/wordpress-plugin/sbs-website-importer/includes/class-sbs-importer-block-converter.php';
 require_once $root . '/wordpress-plugin/sbs-website-importer/includes/class-sbs-importer-theme.php';
 

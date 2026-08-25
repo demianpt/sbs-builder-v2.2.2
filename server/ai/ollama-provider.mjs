@@ -57,6 +57,67 @@ function validationMessage(error) {
   return message ? message.slice(0, 600) : 'The result did not match the required JSON schema.';
 }
 
+/** A wait that a cancelled request can interrupt. */
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new CancelledError());
+    const timer = setTimeout(() => { signal?.removeEventListener?.('abort', onAbort); resolve(); }, ms);
+    function onAbort() { clearTimeout(timer); reject(new CancelledError()); }
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+  });
+}
+
+/*
+ * What the provider actually said.
+ *
+ * This used to throw `OLLAMA_UNAVAILABLE` with "Ollama could not complete the
+ * request" for every non-2xx and *discard the response body* — which is the one
+ * place the reason lives. An operator watching the log saw four identical
+ * `OLLAMA_UNAVAILABLE` lines and had nothing to act on: a quota that will clear
+ * in a minute, a key without access to the model, and a model name with a typo
+ * in it all looked the same.
+ *
+ * So the body is read, bounded, and carried; and the three cases an operator can
+ * actually do something about get their own code and their own sentence.
+ */
+async function providerRefusal(response, config) {
+  let detail = '';
+  try {
+    // Bounded: an HTML error page from a proxy would otherwise become the message.
+    const body = (await response.text()).slice(0, 800).trim();
+    if (body) {
+      try {
+        const parsed = JSON.parse(body);
+        detail = typeof parsed?.error === 'string' ? parsed.error : (parsed?.error?.message || parsed?.message || '');
+      } catch { detail = body; }
+    }
+  } catch { /* a body that will not read is not worth failing over */ }
+  detail = String(detail).replace(/\s+/g, ' ').slice(0, 300);
+
+  const retryAfter = Number(response.headers?.get?.('retry-after')) || 0;
+  const said = detail ? ` The provider said: ${detail}` : '';
+  const model = config.ollamaModel;
+
+  if (response.status === 429) {
+    return new BriefBrainError('OLLAMA_RATE_LIMITED',
+      `Ollama Cloud is rate limiting this key${retryAfter ? `; try again in about ${retryAfter}s` : '; try again shortly'}.${said}`,
+      { status: 503, details: { status: 429, retryAfter: retryAfter || undefined, provider: detail || undefined } });
+  }
+  if (response.status === 401 || response.status === 403) {
+    return new BriefBrainError('OLLAMA_FORBIDDEN',
+      `Ollama Cloud refused this key for ${model}. Check the key, the subscription, and whether the key has access to that model.${said}`,
+      { status: 503, details: { status: response.status, provider: detail || undefined } });
+  }
+  if (response.status === 404) {
+    return new BriefBrainError('OLLAMA_MODEL_NOT_FOUND',
+      `Ollama Cloud does not have a model called ${model}. Check OLLAMA_MODEL against the list the account can use.${said}`,
+      { status: 503, details: { status: 404, model, provider: detail || undefined } });
+  }
+  return new BriefBrainError('OLLAMA_UNAVAILABLE',
+    `Ollama Cloud answered ${response.status}.${said}`,
+    { status: 503, details: { status: response.status, provider: detail || undefined } });
+}
+
 /**
  * Sole AI adapter. The browser never chooses a model or receives the API key;
  * every call uses exactly config.ollamaModel.
@@ -80,12 +141,7 @@ export function createOllamaProvider({ config, fetchImpl = globalThis.fetch, log
         headers: { ...requestHeaders(config), ...init.headers },
         signal: deadline.signal,
       });
-      if (!response.ok) {
-        const message = response.status === 401 || response.status === 403
-          ? 'Ollama Cloud denied access to the configured model. Check the API key, subscription, and model access.'
-          : 'Ollama could not complete the request.';
-        throw new BriefBrainError('OLLAMA_UNAVAILABLE', message, { status: 503, details: { status: response.status } });
-      }
+      if (!response.ok) throw await providerRefusal(response, config);
       return await response.json();
     } catch (error) {
       if (deadline.timedOut()) throw new BriefBrainError('OLLAMA_TIMEOUT', 'Ollama took too long to respond.', { status: 504, cause: error });
@@ -158,8 +214,26 @@ export function createOllamaProvider({ config, fetchImpl = globalThis.fetch, log
       } catch (error) {
         if (error instanceof CancelledError || signal?.aborted) throw new CancelledError();
         lastError = error;
-        const retryable = error?.code === 'OLLAMA_INVALID_JSON' || error?.name === 'ZodError' || error?.code === 'SCHEMA_INVALID';
-        if (!retryable || attempt >= config.aiAttempts) break;
+        const malformed = error?.code === 'OLLAMA_INVALID_JSON' || error?.name === 'ZodError' || error?.code === 'SCHEMA_INVALID';
+        /*
+         * A blip is not a verdict.
+         *
+         * A single rate-limit or a transient 5xx used to end the whole run: the
+         * job degraded to the built-in planner and the operator saw four
+         * identical failures for what was a moment's congestion. Those are worth
+         * one more try after a wait; a refused key and a missing model are not,
+         * because waiting does not fix either.
+         */
+        const transient = error?.code === 'OLLAMA_RATE_LIMITED'
+          || (error?.code === 'OLLAMA_UNAVAILABLE' && Number(error?.details?.status) >= 500);
+        if (attempt >= config.aiAttempts || (!malformed && !transient)) break;
+        if (transient) {
+          const waitMs = Math.min(8_000, (Number(error?.details?.retryAfter) || attempt) * 1_000);
+          logger?.warn('ollama_retrying', { code: error.code, status: error?.details?.status, attempt, waitMs });
+          await sleep(waitMs, signal);
+          repair = null;
+          continue;
+        }
         repair = validationMessage(error);
       }
     }

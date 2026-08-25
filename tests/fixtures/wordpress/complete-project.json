@@ -36,7 +36,7 @@
     ]
   },
   "concept": {
-    "id": "concept-mt78dl0h-9-v1-complete-project",
+    "id": "concept-mt7j5e77-9-v1-complete-project",
     "name": "Vision Continuity — Complete project",
     "conceptId": "v1",
     "slot": "V1",
@@ -1358,7 +1358,7 @@
       },
       "sections": [
         {
-          "id": "section-hero-mt78dl0g-1-b1",
+          "id": "section-hero-mt7j5e75-1-b1",
           "component": "ds-blocks/dst-banner",
           "usage": "home-hero hook",
           "confidence": "confirmed",
@@ -1367,7 +1367,7 @@
             "backgroundColor": "rgba(7, 28, 42, 1.00)",
             "backgroundImage": [
               {
-                "id": "section-hero-mt78dl0g-1-b1-layer-1",
+                "id": "section-hero-mt7j5e75-1-b1-layer-1",
                 "desktop": {
                   "fixed": false,
                   "focal": {
@@ -1439,7 +1439,7 @@
           },
           "children": [
             {
-              "id": "section-hero-mt78dl0g-1-b2",
+              "id": "section-hero-mt7j5e75-1-b2",
               "component": "ds-blocks/c-heading",
               "usage": "section-header",
               "confidence": "confirmed",
@@ -1485,7 +1485,7 @@
               },
               "children": [
                 {
-                  "id": "section-hero-mt78dl0g-1-b3",
+                  "id": "section-hero-mt7j5e75-1-b3",
                   "component": "ds-blocks/button-group",
                   "usage": "buttons",
                   "confidence": "confirmed",
@@ -1495,7 +1495,7 @@
                   },
                   "children": [
                     {
-                      "id": "section-hero-mt78dl0g-1-b4",
+                      "id": "section-hero-mt7j5e75-1-b4",
                       "component": "ds-blocks/c-btn",
                       "usage": "cta",
                       "confidence": "confirmed",
@@ -1517,7 +1517,7 @@
                       }
                     },
                     {
-                      "id": "section-hero-mt78dl0g-1-b5",
+                      "id": "section-hero-mt7j5e75-1-b5",
                       "component": "ds-blocks/c-btn",
                       "usage": "cta",
                       "confidence": "confirmed",
@@ -1610,7 +1610,7 @@
           }
         },
         {
-          "id": "section-slider-mt78dl0g-2-b1",
+          "id": "section-slider-mt7j5e76-2-b1",
           "component": "ds-blocks/ds-columns",
           "usage": "proof portfolio slider",
           "confidence": "confirmed",
@@ -1643,7 +1643,7 @@
           },
           "children": [
             {
-              "id": "section-slider-mt78dl0g-2-b2",
+              "id": "section-slider-mt7j5e76-2-b2",
               "component": "ds-blocks/ds-column",
               "usage": "column",
               "confidence": "confirmed",
@@ -1654,7 +1654,7 @@
               },
               "children": [
                 {
-                  "id": "section-slider-mt78dl0g-2-b3",
+                  "id": "section-slider-mt7j5e76-2-b3",
                   "component": "ds-blocks/c-heading",
                   "usage": "section-header",
                   "confidence": "confirmed",
@@ -1696,47 +1696,7 @@
                     "alignment": "left",
                     "alignmentMobile": "left"
                   },
-                  "children": [
-                    {
-                      "id": "section-slider-mt78dl0g-2-b4",
-                      "component": "ds-blocks/button-group",
-                      "usage": "buttons",
-                      "confidence": "confirmed",
-                      "attributes": {
-                        "justifyContent": "flex-start",
-                        "justifyContentMobile": "center"
-                      },
-                      "children": [
-                        {
-                          "id": "section-slider-mt78dl0g-2-b5",
-                          "component": "ds-blocks/c-btn",
-                          "usage": "cta",
-                          "confidence": "confirmed",
-                          "attributes": {
-                            "text": "",
-                            "hasIcon": false,
-                            "iconPosition": "row-reverse",
-                            "link": {
-                              "url": "#",
-                              "opensInNewTab": false,
-                              "title": ""
-                            }
-                          },
-                          "children": [],
-                          "layout": {
-                            "container": "full"
-                          }
-                        }
-                      ],
-                      "layout": {
-                        "padding": {
-                          "top": "small",
-                          "bottom": "none"
-                        },
-                        "container": "full"
-                      }
-                    }
-                  ],
+                  "children": [],
                   "layout": {
                     "padding": {
                       "top": "none",
@@ -1751,7 +1711,7 @@
               }
             },
             {
-              "id": "section-slider-mt78dl0g-2-b6",
+              "id": "section-slider-mt7j5e76-2-b6",
               "component": "ds-blocks/ds-column",
               "usage": "column",
               "confidence": "confirmed",
@@ -1761,7 +1721,7 @@
               },
               "children": [
                 {
-                  "id": "section-slider-mt78dl0g-2-b7",
+                  "id": "section-slider-mt7j5e76-2-b7",
                   "component": "ds-blocks/c-cards",
                   "usage": "cards",
                   "confidence": "confirmed",
@@ -1820,7 +1780,10 @@
                       "showProgress": true,
                       "bleedRight": true,
                       "bleedRightVisibleItems": 3,
-                      "arrowsPosition": "bottom"
+                      "arrowsPosition": "bottom",
+                      "visibleItemsDesktop": 3,
+                      "visibleItemsTablet": 2,
+                      "visibleItemsMobile": 1
                     },
                     "postType": {
                       "post": {
@@ -1882,7 +1845,7 @@
                   },
                   "children": [
                     {
-                      "id": "section-slider-mt78dl0g-2-b8",
+                      "id": "section-slider-mt7j5e76-2-b8",
                       "component": "ds-blocks/c-card-item",
                       "usage": "card",
                       "confidence": "confirmed",
@@ -1904,7 +1867,7 @@
                       "layout": {}
                     },
                     {
-                      "id": "section-slider-mt78dl0g-2-b9",
+                      "id": "section-slider-mt7j5e76-2-b9",
                       "component": "ds-blocks/c-card-item",
                       "usage": "card",
                       "confidence": "confirmed",
@@ -1926,7 +1889,7 @@
                       "layout": {}
                     },
                     {
-                      "id": "section-slider-mt78dl0g-2-b10",
+                      "id": "section-slider-mt7j5e76-2-b10",
                       "component": "ds-blocks/c-card-item",
                       "usage": "card",
                       "confidence": "confirmed",
@@ -1948,7 +1911,7 @@
                       "layout": {}
                     },
                     {
-                      "id": "section-slider-mt78dl0g-2-b11",
+                      "id": "section-slider-mt7j5e76-2-b11",
                       "component": "ds-blocks/c-card-item",
                       "usage": "card",
                       "confidence": "confirmed",
@@ -2018,7 +1981,7 @@
           }
         },
         {
-          "id": "section-timeline-mt78dl0h-3-b1",
+          "id": "section-timeline-mt7j5e77-3-b1",
           "component": "ds-blocks/dst-wrapper",
           "usage": "process steps how-it-works",
           "confidence": "confirmed",
@@ -2053,7 +2016,7 @@
           },
           "children": [
             {
-              "id": "section-timeline-mt78dl0h-3-b1-inner",
+              "id": "section-timeline-mt7j5e77-3-b1-inner",
               "component": "ds-blocks/dst-wrapper",
               "usage": "inner-container",
               "confidence": "confirmed",
@@ -2067,7 +2030,7 @@
               },
               "children": [
                 {
-                  "id": "section-timeline-mt78dl0h-3-b1",
+                  "id": "section-timeline-mt7j5e77-3-b1",
                   "component": "ds-blocks/l-content-2",
                   "usage": "process steps how-it-works",
                   "confidence": "confirmed",
@@ -2115,7 +2078,7 @@
                   },
                   "children": [
                     {
-                      "id": "section-timeline-mt78dl0h-3-b2",
+                      "id": "section-timeline-mt7j5e77-3-b2",
                       "component": "ds-blocks/c-heading",
                       "usage": "section-header",
                       "confidence": "confirmed",
@@ -2138,14 +2101,14 @@
                       },
                       "children": [
                         {
-                          "id": "section-timeline-mt78dl0h-3-b3",
+                          "id": "section-timeline-mt7j5e77-3-b3",
                           "component": "ds-blocks/simple-text",
                           "usage": "rich-text",
                           "confidence": "confirmed",
                           "attributes": {},
                           "children": [
                             {
-                              "id": "section-timeline-mt78dl0h-3-b4",
+                              "id": "section-timeline-mt7j5e77-3-b4",
                               "component": "core/paragraph",
                               "usage": "paragraph",
                               "confidence": "confirmed",
@@ -2163,7 +2126,7 @@
                       }
                     },
                     {
-                      "id": "section-timeline-mt78dl0h-3-b5",
+                      "id": "section-timeline-mt7j5e77-3-b5",
                       "component": "ds-blocks/c-list",
                       "usage": "list",
                       "confidence": "confirmed",
@@ -2185,7 +2148,7 @@
                       },
                       "children": [
                         {
-                          "id": "section-timeline-mt78dl0h-3-b6",
+                          "id": "section-timeline-mt7j5e77-3-b6",
                           "component": "ds-blocks/c-list-item",
                           "usage": "list-item",
                           "confidence": "confirmed",
@@ -2200,7 +2163,7 @@
                           "layout": {}
                         },
                         {
-                          "id": "section-timeline-mt78dl0h-3-b7",
+                          "id": "section-timeline-mt7j5e77-3-b7",
                           "component": "ds-blocks/c-list-item",
                           "usage": "list-item",
                           "confidence": "confirmed",
@@ -2215,7 +2178,7 @@
                           "layout": {}
                         },
                         {
-                          "id": "section-timeline-mt78dl0h-3-b8",
+                          "id": "section-timeline-mt7j5e77-3-b8",
                           "component": "ds-blocks/c-list-item",
                           "usage": "list-item",
                           "confidence": "confirmed",
@@ -2230,7 +2193,7 @@
                           "layout": {}
                         },
                         {
-                          "id": "section-timeline-mt78dl0h-3-b9",
+                          "id": "section-timeline-mt7j5e77-3-b9",
                           "component": "ds-blocks/c-list-item",
                           "usage": "list-item",
                           "confidence": "confirmed",
@@ -2250,7 +2213,7 @@
                       }
                     },
                     {
-                      "id": "section-timeline-mt78dl0h-3-b10",
+                      "id": "section-timeline-mt7j5e77-3-b10",
                       "component": "ds-blocks/button-group",
                       "usage": "buttons",
                       "confidence": "confirmed",
@@ -2260,7 +2223,7 @@
                       },
                       "children": [
                         {
-                          "id": "section-timeline-mt78dl0h-3-b11",
+                          "id": "section-timeline-mt7j5e77-3-b11",
                           "component": "ds-blocks/c-btn",
                           "usage": "cta",
                           "confidence": "confirmed",
@@ -2274,27 +2237,6 @@
                             "hasIcon": true,
                             "iconPosition": "row-reverse",
                             "btnType": "primary"
-                          },
-                          "children": [],
-                          "layout": {
-                            "container": "full"
-                          }
-                        },
-                        {
-                          "id": "section-timeline-mt78dl0h-3-b12",
-                          "component": "ds-blocks/c-btn",
-                          "usage": "cta",
-                          "confidence": "confirmed",
-                          "attributes": {
-                            "text": "",
-                            "link": {
-                              "url": "#",
-                              "opensInNewTab": false,
-                              "title": ""
-                            },
-                            "btnType": "secondary",
-                            "hasIcon": false,
-                            "iconPosition": "row-reverse"
                           },
                           "children": [],
                           "layout": {
@@ -2348,7 +2290,7 @@
           }
         },
         {
-          "id": "section-stats-mt78dl0h-6-b1",
+          "id": "section-stats-mt7j5e77-6-b1",
           "component": "ds-blocks/dst-wrapper",
           "usage": "proof stats results counters",
           "confidence": "confirmed",
@@ -2370,7 +2312,7 @@
           },
           "children": [
             {
-              "id": "section-stats-mt78dl0h-6-b2",
+              "id": "section-stats-mt7j5e77-6-b2",
               "component": "ds-blocks/ds-columns",
               "usage": "columns",
               "confidence": "confirmed",
@@ -2388,7 +2330,7 @@
               },
               "children": [
                 {
-                  "id": "section-stats-mt78dl0h-6-b3",
+                  "id": "section-stats-mt7j5e77-6-b3",
                   "component": "ds-blocks/ds-column",
                   "usage": "column",
                   "confidence": "confirmed",
@@ -2398,7 +2340,7 @@
                   },
                   "children": [
                     {
-                      "id": "section-stats-mt78dl0h-6-b4",
+                      "id": "section-stats-mt7j5e77-6-b4",
                       "component": "ds-blocks/c-heading",
                       "usage": "section-header",
                       "confidence": "confirmed",
@@ -2443,14 +2385,14 @@
                       },
                       "children": [
                         {
-                          "id": "section-stats-mt78dl0h-6-b5",
+                          "id": "section-stats-mt7j5e77-6-b5",
                           "component": "ds-blocks/simple-text",
                           "usage": "rich-text",
                           "confidence": "confirmed",
                           "attributes": {},
                           "children": [
                             {
-                              "id": "section-stats-mt78dl0h-6-b6",
+                              "id": "section-stats-mt7j5e77-6-b6",
                               "component": "core/paragraph",
                               "usage": "paragraph",
                               "confidence": "confirmed",
@@ -2483,7 +2425,7 @@
                   }
                 },
                 {
-                  "id": "section-stats-mt78dl0h-6-b7",
+                  "id": "section-stats-mt7j5e77-6-b7",
                   "component": "ds-blocks/ds-column",
                   "usage": "column",
                   "confidence": "confirmed",
@@ -2494,7 +2436,7 @@
                   },
                   "children": [
                     {
-                      "id": "section-stats-mt78dl0h-6-b8",
+                      "id": "section-stats-mt7j5e77-6-b8",
                       "component": "ds-blocks/c-list",
                       "usage": "list",
                       "confidence": "confirmed",
@@ -2569,7 +2511,7 @@
                       },
                       "children": [
                         {
-                          "id": "section-stats-mt78dl0h-6-b9",
+                          "id": "section-stats-mt7j5e77-6-b9",
                           "component": "ds-blocks/c-list-item",
                           "usage": "list-item",
                           "confidence": "confirmed",
@@ -2584,7 +2526,7 @@
                           "layout": {}
                         },
                         {
-                          "id": "section-stats-mt78dl0h-6-b10",
+                          "id": "section-stats-mt7j5e77-6-b10",
                           "component": "ds-blocks/c-list-item",
                           "usage": "list-item",
                           "confidence": "confirmed",
@@ -2599,7 +2541,7 @@
                           "layout": {}
                         },
                         {
-                          "id": "section-stats-mt78dl0h-6-b11",
+                          "id": "section-stats-mt7j5e77-6-b11",
                           "component": "ds-blocks/c-list-item",
                           "usage": "list-item",
                           "confidence": "confirmed",
@@ -2614,7 +2556,7 @@
                           "layout": {}
                         },
                         {
-                          "id": "section-stats-mt78dl0h-6-b12",
+                          "id": "section-stats-mt7j5e77-6-b12",
                           "component": "ds-blocks/c-list-item",
                           "usage": "list-item",
                           "confidence": "confirmed",
@@ -2677,7 +2619,7 @@
           }
         },
         {
-          "id": "section-testimonial-mt78dl0h-7-b1",
+          "id": "section-testimonial-mt7j5e77-7-b1",
           "component": "ds-blocks/ds-columns",
           "usage": "proof testimonial reviews",
           "confidence": "confirmed",
@@ -2709,7 +2651,7 @@
           },
           "children": [
             {
-              "id": "section-testimonial-mt78dl0h-7-b2",
+              "id": "section-testimonial-mt7j5e77-7-b2",
               "component": "ds-blocks/ds-column",
               "usage": "column",
               "confidence": "confirmed",
@@ -2725,7 +2667,7 @@
               },
               "children": [
                 {
-                  "id": "section-testimonial-mt78dl0h-7-b3",
+                  "id": "section-testimonial-mt7j5e77-7-b3",
                   "component": "ds-blocks/c-heading",
                   "usage": "section-header",
                   "confidence": "confirmed",
@@ -2756,7 +2698,7 @@
               }
             },
             {
-              "id": "section-testimonial-mt78dl0h-7-b4",
+              "id": "section-testimonial-mt7j5e77-7-b4",
               "component": "ds-blocks/ds-column",
               "usage": "column",
               "confidence": "confirmed",
@@ -2767,7 +2709,7 @@
               },
               "children": [
                 {
-                  "id": "section-testimonial-mt78dl0h-7-b5",
+                  "id": "section-testimonial-mt7j5e77-7-b5",
                   "component": "ds-blocks/c-cards",
                   "usage": "cards",
                   "confidence": "confirmed",
@@ -2885,7 +2827,7 @@
                   },
                   "children": [
                     {
-                      "id": "section-testimonial-mt78dl0h-7-b6",
+                      "id": "section-testimonial-mt7j5e77-7-b6",
                       "component": "ds-blocks/c-card-item",
                       "usage": "testimonial-card",
                       "confidence": "confirmed",
@@ -2907,7 +2849,7 @@
                       "layout": {}
                     },
                     {
-                      "id": "section-testimonial-mt78dl0h-7-b7",
+                      "id": "section-testimonial-mt7j5e77-7-b7",
                       "component": "ds-blocks/c-card-item",
                       "usage": "testimonial-card",
                       "confidence": "confirmed",
@@ -2929,7 +2871,7 @@
                       "layout": {}
                     },
                     {
-                      "id": "section-testimonial-mt78dl0h-7-b8",
+                      "id": "section-testimonial-mt7j5e77-7-b8",
                       "component": "ds-blocks/c-card-item",
                       "usage": "testimonial-card",
                       "confidence": "confirmed",
@@ -2951,7 +2893,7 @@
                       "layout": {}
                     },
                     {
-                      "id": "section-testimonial-mt78dl0h-7-b9",
+                      "id": "section-testimonial-mt7j5e77-7-b9",
                       "component": "ds-blocks/c-card-item",
                       "usage": "testimonial-card",
                       "confidence": "confirmed",
@@ -3016,7 +2958,7 @@
           }
         },
         {
-          "id": "section-cta-mt78dl0h-8-b1",
+          "id": "section-cta-mt7j5e77-8-b1",
           "component": "ds-blocks/dst-banner",
           "usage": "conversion cta contact lead",
           "confidence": "confirmed",
@@ -3025,7 +2967,7 @@
             "backgroundColor": "rgba(7, 28, 42, 1.00)",
             "backgroundImage": [
               {
-                "id": "section-cta-mt78dl0h-8-b1-layer-1",
+                "id": "section-cta-mt7j5e77-8-b1-layer-1",
                 "desktop": {
                   "fixed": false,
                   "focal": {
@@ -3097,7 +3039,7 @@
           },
           "children": [
             {
-              "id": "section-cta-mt78dl0h-8-b2",
+              "id": "section-cta-mt7j5e77-8-b2",
               "component": "ds-blocks/c-heading",
               "usage": "section-header",
               "confidence": "confirmed",
@@ -3143,7 +3085,7 @@
               },
               "children": [
                 {
-                  "id": "section-cta-mt78dl0h-8-b3",
+                  "id": "section-cta-mt7j5e77-8-b3",
                   "component": "ds-blocks/button-group",
                   "usage": "buttons",
                   "confidence": "confirmed",
@@ -3153,7 +3095,7 @@
                   },
                   "children": [
                     {
-                      "id": "section-cta-mt78dl0h-8-b4",
+                      "id": "section-cta-mt7j5e77-8-b4",
                       "component": "ds-blocks/c-btn",
                       "usage": "cta",
                       "confidence": "confirmed",
@@ -3174,7 +3116,7 @@
                       }
                     },
                     {
-                      "id": "section-cta-mt78dl0h-8-b5",
+                      "id": "section-cta-mt7j5e77-8-b5",
                       "component": "ds-blocks/c-btn",
                       "usage": "cta",
                       "confidence": "confirmed",
@@ -4210,7 +4152,7 @@
     }
   },
   "__status": {
-    "builder": "SBS DST Page Builder 2.8.0",
+    "builder": "SBS DST Page Builder 2.9.0",
     "skill": "dst-concept-to-json-patterns",
     "patternsAvailable": 156,
     "generatedAt": "2026-01-01T00:00:00.000Z",

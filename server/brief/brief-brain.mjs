@@ -121,8 +121,30 @@ function briefBlock(brief) {
 function providerUnavailable(error) {
   return [
     'OLLAMA_NOT_CONFIGURED', 'OLLAMA_UNAVAILABLE', 'OLLAMA_TIMEOUT',
+    'OLLAMA_RATE_LIMITED', 'OLLAMA_FORBIDDEN', 'OLLAMA_MODEL_NOT_FOUND',
     'OLLAMA_INVALID_JSON', 'OLLAMA_SCHEMA_INVALID', 'SCHEMA_INVALID',
   ].includes(error?.code) || error?.name === 'ZodError';
+}
+
+/*
+ * What to tell the operator, per cause.
+ *
+ * "The AI model could not answer in time" was the message for every one of these,
+ * including a key without access and a model name that does not exist — neither
+ * of which is a timeout and neither of which improves by waiting.
+ */
+const DEGRADED_MESSAGES = {
+  OLLAMA_NOT_CONFIGURED: 'The AI model is not configured on this server, so the built-in planner answered instead.',
+  OLLAMA_RATE_LIMITED: 'The AI provider is rate limiting this key, so the built-in planner answered instead. Try again in a minute.',
+  OLLAMA_FORBIDDEN: 'The AI provider refused the configured key or model, so the built-in planner answered instead. The server log has the reason.',
+  OLLAMA_MODEL_NOT_FOUND: 'The configured AI model does not exist on the provider, so the built-in planner answered instead. Check OLLAMA_MODEL.',
+  OLLAMA_TIMEOUT: 'The AI model did not answer in time, so the built-in planner answered instead.',
+  OLLAMA_INVALID_JSON: 'The AI model returned something that was not usable, so the built-in planner answered instead.',
+  OLLAMA_SCHEMA_INVALID: 'The AI model returned something that did not fit the required shape, so the built-in planner answered instead.',
+};
+
+function degradedMessage(code) {
+  return DEGRADED_MESSAGES[code] || 'The AI model could not answer, so the built-in planner answered instead.';
 }
 
 /**
@@ -136,15 +158,23 @@ async function withFallback({ run, fallback, logger, job }) {
     return { ...result, source: 'ai', degraded: null };
   } catch (error) {
     if (!providerUnavailable(error)) throw error;
-    logger?.warn('brief_brain_degraded', { job, code: error?.code || error?.name || 'UNKNOWN' });
+    const code = error?.code || (error?.name === 'ZodError' ? 'OLLAMA_SCHEMA_INVALID' : 'UNKNOWN');
+    /*
+     * The log line is what an operator has to act on, so it carries the reason
+     * rather than only the code — the provider's own status and message, and the
+     * retry hint when there is one. It never carries the key: `details` is built
+     * from the response, and the response does not contain it.
+     */
+    logger?.warn('brief_brain_degraded', {
+      job,
+      code,
+      status: error?.details?.status,
+      retryAfter: error?.details?.retryAfter,
+      reason: error?.details?.provider || error?.message,
+    });
     return {
       ...fallback(),
-      degraded: {
-        code: error?.code || (error?.name === 'ZodError' ? 'OLLAMA_SCHEMA_INVALID' : 'UNKNOWN'),
-        message: error?.code === 'OLLAMA_NOT_CONFIGURED'
-          ? 'The AI model is not configured on this server, so the built-in planner answered instead.'
-          : 'The AI model could not answer in time, so the built-in planner answered instead.',
-      },
+      degraded: { code, message: degradedMessage(code) },
     };
   }
 }
@@ -565,7 +595,19 @@ export function createBriefBrain({ provider, stock, config, logger } = {}) {
     ]);
     const assets = [...images.results, ...videos.results];
     if (!assets.length) {
-      throw new BriefBrainError('STOCK_EMPTY', `The stock library has nothing for "${queries.images}". Name the subject more plainly — what would actually be in the photograph.`, { status: 422 });
+      /*
+       * Whose fault it is matters here.
+       *
+       * When the search terms came from the built-in planner because the model
+       * degraded, "name the subject more plainly" sends the strategist to rewrite
+       * a brief that was fine. The terms are the problem, and the terms are the
+       * model's — so say that instead.
+       */
+      const searched = String(queries.images || '').trim();
+      const message = queries.degraded
+        ? `No imagery was found${searched ? ` for "${searched}"` : ''}, because the AI model could not write the search terms — the built-in planner's terms were used instead. ${degradedMessage(queries.degraded.code)}`
+        : `The stock library has nothing for "${searched}". Name the subject more plainly — what would actually be in the photograph.`;
+      throw new BriefBrainError('STOCK_EMPTY', message, { status: 422, details: { query: searched || undefined, degraded: queries.degraded?.code } });
     }
 
     const assetLine = (asset) => [

@@ -117,6 +117,167 @@ function stripForeignMedia(value, tally) {
   return out;
 }
 
+/*
+ * A scrim has to be strong enough for the words that sit in it.
+ *
+ * Both floors below are derived rather than chosen, because an overlay of colour
+ * C at alpha a over a photograph pixel P paints a*C + (1-a)*P — and a photograph
+ * can hold any pixel, so the guarantee has to hold for the worst one.
+ *
+ *   Light copy is #f7f5ef, relative luminance .93. At 4.5:1 the ground may not
+ *   be lighter than luminance .168, which is channel value 113. The worst pixel
+ *   is white, and a near-black scrim (channel 33) gives 33a + 255(1-a) <= 113,
+ *   so a >= .64.
+ *
+ *   Dark copy is the palette's dark role, luminance about .014. At 4.5:1 the
+ *   ground may not be darker than luminance .24, which is channel 135. The worst
+ *   pixel is black, and a white scrim gives 255a >= 135, so a >= .53. Rounded up
+ *   to .58 for the grey the subtitles use, which is lighter than the heading.
+ *
+ * The alternative — leaving the scrim as authored and hoping the photograph is
+ * mid-tone — is what put white headings on a bright warehouse photograph at
+ * 1.1:1 and dark quotes on a dark one.
+ */
+const SCRIM_FOR_LIGHT_COPY = 0.64;
+const SCRIM_FOR_DARK_COPY = 0.58;
+
+/* The palette roles a scrim is painted from, so it follows the chosen palette. */
+const SCRIM_DARK_TOKEN = 'var(--dst--primary-color1)';
+const SCRIM_LIGHT_TOKEN = 'var(--dst--secondary-color1)';
+
+/*
+ * The components that can be the ground a band's copy sits on.
+ *
+ * A banner is the obvious one, but fifteen wrappers and two column groups carry
+ * a background slot too — that is where the testimonial, FAQ and contact bands
+ * put their photograph — and six of them had no wash at all. Restricting the
+ * guarantee to banners left exactly the families whose quotes were reported as
+ * unreadable.
+ */
+const MEDIA_GROUNDS = new Set(['ds-blocks/dst-banner', 'ds-blocks/dst-wrapper', 'ds-blocks/ds-columns']);
+
+/* Families whose preset carries light copy — see SECTION_PRESETS in the runtime. */
+const LIGHT_COPY_FAMILIES = new Set(['hero', 'cta', 'logo', 'timeline', 'contact']);
+
+/** A CSS colour's channels and alpha, for the literals these patterns use. */
+function readColor(text) {
+  const value = String(text || '').trim();
+  let match = /^#([0-9a-f]{3,8})$/i.exec(value);
+  if (match) {
+    let hex = match[1];
+    if (hex.length === 3 || hex.length === 4) hex = hex.split('').map((c) => c + c).join('');
+    const alpha = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1;
+    return { rgb: [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)), alpha };
+  }
+  match = /^rgba?\(([^)]+)\)$/i.exec(value);
+  if (match) {
+    const parts = match[1].split(/[,/\s]+/).filter(Boolean).map(Number);
+    if (parts.length >= 3) return { rgb: parts.slice(0, 3), alpha: parts.length > 3 ? parts[3] : 1 };
+  }
+  if (/^transparent$/i.test(value)) return { rgb: [0, 0, 0], alpha: 0 };
+  if (/^white$/i.test(value)) return { rgb: [255, 255, 255], alpha: 1 };
+  if (/^black$/i.test(value)) return { rgb: [0, 0, 0], alpha: 1 };
+  /* A palette token: dark roles carry the copy, light roles sit under it. */
+  if (/secondary-color1|secondary-color7/.test(value)) return { rgb: [255, 255, 255], alpha: 1, token: value };
+  if (/primary-color1|primary-color3|body-bg-alt/.test(value)) return { rgb: [20, 20, 22], alpha: 1, token: value };
+  return null;
+}
+
+function relativeLuminance([r, g, b]) {
+  const channel = (c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+/** Whether an overlay value reads as a dark wash, a light one, or neither. */
+function washTone(value) {
+  const text = String(value || '');
+  if (!text) return null;
+  const stops = text.match(/#[0-9a-f]{3,8}|rgba?\([^)]*\)|var\(--[a-z0-9-]+\)|transparent|white|black/gi) || [];
+  const weighted = stops
+    .map(readColor)
+    .filter((entry) => entry && entry.alpha > 0.02);
+  if (!weighted.length) return null;
+  const mean = weighted.reduce((total, entry) => total + relativeLuminance(entry.rgb), 0) / weighted.length;
+  return mean < 0.22 ? 'dark' : 'light';
+}
+
+/** A trimmed attribute value, treating an empty string as absent. */
+function cleanValue(value) {
+  return typeof value === 'string' ? value.trim() : (value == null ? '' : String(value));
+}
+
+/** The least opaque point of a wash, once the opacity attribute is folded in. */
+function weakestAlpha(text, fold) {
+  const stops = String(text).match(/#[0-9a-f]{3,8}|rgba?\([^)]*\)|var\(--[a-z0-9-]+\)|transparent|white|black/gi) || [];
+  const alphas = stops.map(readColor).filter(Boolean).map((entry) => entry.alpha * fold);
+  if (!alphas.length) return 0;
+  return Math.min(...alphas);
+}
+
+/**
+ * The same wash, guaranteed to carry the copy.
+ *
+ * The authored alpha is remapped onto [floor, 1] rather than clamped, so a
+ * gradient that faded from clear to solid still fades — it fades from the floor
+ * to solid. Direction, hue and shape survive; the transparent end no longer
+ * hands the words straight to the photograph.
+ */
+function raiseWash(value, opacity, floor, toneToken) {
+  const fold = Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 1;
+  const remap = (alpha) => Math.round((floor + (1 - floor) * alpha * fold) * 1000) / 1000;
+  const text = String(value || '').trim();
+
+  if (!text) return { overlay: toneToken, opacity: floor };
+
+  /*
+   * A wash that already clears the floor is left exactly as it is.
+   *
+   * Without this the remap is a ratchet: it maps [0,1] onto [floor,1], so a
+   * second pass over its own output lifts .64 to .87 and a third to .95, and
+   * re-running the script would keep dimming the photographs.
+   */
+  if (weakestAlpha(text, fold) >= floor - 0.001) return { overlay: value, opacity: fold };
+
+  if (!/gradient/i.test(text)) {
+    const parsed = readColor(text);
+    if (!parsed) return { overlay: toneToken, opacity: floor };
+    /*
+     * A flat wash keeps its hue and moves all of its strength into the opacity
+     * attribute, which is the control the editor exposes and the importer reads.
+     */
+    const strength = remap(parsed.alpha);
+    const hue = parsed.token || `rgb(${parsed.rgb.map(Math.round).join(',')})`;
+    return { overlay: hue, opacity: strength };
+  }
+
+  const rewritten = text.replace(/#[0-9a-f]{3,8}|rgba?\([^)]*\)|transparent|white|black/gi, (stop) => {
+    const parsed = readColor(stop);
+    if (!parsed) return stop;
+    const alpha = remap(parsed.alpha);
+    /* A stop with nothing in it takes the band's own tone rather than black. */
+    const rgb = parsed.alpha < 0.02 ? readColor(toneToken).rgb : parsed.rgb;
+    return `rgba(${rgb.map(Math.round).join(',')},${alpha})`;
+  });
+  return { overlay: rewritten, opacity: 1 };
+}
+
+/**
+ * Whether this banner paints a photograph behind its own content.
+ *
+ * The slot is what matters, not what is in it. Every one of these banners now
+ * carries `backgroundImage: []` — the foreign media was stripped so the imagery
+ * pass can put this project's own photograph there — so testing for a named file
+ * finds nothing and the scrim never gets built for the picture that arrives.
+ */
+function holdsBackgroundMedia(attrs) {
+  if (!Object.prototype.hasOwnProperty.call(attrs, 'backgroundImage')) return false;
+  const layers = attrs.backgroundImage;
+  return Array.isArray(layers) || (layers && typeof layers === 'object');
+}
+
 function countCards(node) {
   let total = 0;
   for (const child of node.children || []) {
@@ -127,6 +288,66 @@ function countCards(node) {
 
 function clean(node, pattern, tally) {
   const attrs = node.attributes || {};
+
+  /*
+   * Attribute names this theme does not have.
+   *
+   * The patterns were exported from an older install, so some of them name
+   * controls that have since been renamed or removed. WordPress keeps an
+   * unregistered attribute in the markup and ignores it, which means the setting
+   * silently does not happen — `enableLightSlider` is why a slider imported as a
+   * plain grid of cards. Checked against the theme's own `block.json` files by
+   * `scripts/verify-catalog-against-theme.mjs`.
+   */
+  if (node.component === 'ds-blocks/c-cards' || node.component === 'ds-blocks/dst-banner-slider') {
+    if ('enableLightSlider' in attrs) {
+      attrs.enableDstSlider = !!attrs.enableLightSlider || !!attrs.enableDstSlider;
+      delete attrs.enableLightSlider;
+      tally.legacyAttributes += 1;
+    }
+    if ('lightSliderSettings' in attrs) {
+      const carried = attrs.lightSliderSettings;
+      if (carried && typeof carried === 'object' && !attrs.dstSliderSettings) attrs.dstSliderSettings = carried;
+      delete attrs.lightSliderSettings;
+      tally.legacyAttributes += 1;
+    }
+  }
+  if (node.component === 'ds-blocks/c-heading') {
+    /*
+     * A heading's description is inner blocks, not an attribute — the renderer
+     * has always read it from the children. Where the attribute holds copy it
+     * becomes a `simple-text` child so the words survive; where it is empty it
+     * just goes.
+     */
+    if ('description' in attrs) {
+      const copy = typeof attrs.description === 'string' ? attrs.description.trim() : '';
+      if (copy) {
+        node.children = node.children || [];
+        node.children.push({
+          id: `${node.id || 'heading'}-description`,
+          component: 'ds-blocks/simple-text',
+          usage: 'copy',
+          confidence: 'confirmed',
+          attributes: {},
+          text: copy,
+          children: [],
+        });
+      }
+      delete attrs.description;
+      tally.legacyAttributes += 1;
+    }
+    // Neither exists on this block; `showButtons` belongs to a card item.
+    for (const key of ['showText', 'showButtons']) {
+      if (key in attrs) { delete attrs[key]; tally.legacyAttributes += 1 }
+    }
+  }
+  if (node.component === 'ds-blocks/c-btn' && 'btnVariant' in attrs) {
+    // `btnType` is the registered control; the variant was never read.
+    if (!attrs.btnType && typeof attrs.btnVariant === 'string' && attrs.btnVariant) attrs.btnType = attrs.btnVariant;
+    delete attrs.btnVariant;
+    tally.legacyAttributes += 1;
+  }
+
 
   for (const key of ['media', 'backgroundImage', 'imagePrimary', 'video', 'posterImage']) {
     if (!(key in attrs)) continue;
@@ -219,6 +440,41 @@ function clean(node, pattern, tally) {
     tally.heroOverlays += 1;
   }
 
+  /*
+   * A band whose words sit on a photograph gets a scrim that can carry them.
+   *
+   * Twenty-six of the forty-seven banners in this catalogue painted a photograph
+   * and no wash at all, and several of the rest used a gradient that was clear
+   * at exactly the height the heading occupies. Which of the two failures you
+   * see depends only on the picture: a bright photograph swallowed the light
+   * headings, a dark one swallowed the dark quotes.
+   *
+   * Only a band that already paints a wash is touched. A band that paints none
+   * is the runtime's business: `fidelityApplySection` gives any photograph with
+   * no wash the brand's dark at 60% and inverts the copy to suit, and filling
+   * the blank here would take that decision away from it and turn fifteen dark
+   * media bands pale — a design change nobody asked for. What the runtime cannot
+   * see is a wash that *exists* and is too thin, or is clear at exactly the
+   * height the heading occupies, because to it those count as painted.
+   *
+   * The tone is taken from the wash the designer authored — a dark wash is a
+   * decision to put light copy in it — and from the family's preset only as a
+   * fallback for a wash whose colour cannot be read.
+   */
+  if (MEDIA_GROUNDS.has(node.component) && holdsBackgroundMedia(attrs) && cleanValue(attrs.backgroundOverlay)) {
+    const authored = washTone(attrs.backgroundOverlay);
+    const lightCopy = authored ? authored === 'dark' : LIGHT_COPY_FAMILIES.has(pattern.family);
+    const floor = lightCopy ? SCRIM_FOR_LIGHT_COPY : SCRIM_FOR_DARK_COPY;
+    const token = lightCopy ? SCRIM_DARK_TOKEN : SCRIM_LIGHT_TOKEN;
+    const before = `${attrs.backgroundOverlay ?? ''}@${attrs.backgroundOverlayOpacity ?? ''}@${attrs.backgroundOverlayEnabled ?? ''}`;
+    const raised = raiseWash(attrs.backgroundOverlay, attrs.backgroundOverlayOpacity, floor, token);
+    attrs.backgroundOverlay = raised.overlay;
+    attrs.backgroundOverlayOpacity = raised.opacity;
+    // Switched off is the same as absent to a reader of the page.
+    attrs.backgroundOverlayEnabled = true;
+    if (`${attrs.backgroundOverlay}@${attrs.backgroundOverlayOpacity}@true` !== before) tally.scrims += 1;
+  }
+
   for (const child of node.children || []) clean(child, pattern, tally);
 }
 
@@ -236,7 +492,11 @@ function clean(node, pattern, tally) {
  *               `align-self`
  *   stickyMedia the column holding the picture stays put while the column beside
  *               it scrolls
+ *   stickyHeading the same, for the column holding the heading
  *   fullList    the list is not a container: no `c-default`, no side padding
+ *   buttons     which button treatment the band asks for: `standard` is the
+ *               ordinary filled primary rather than the white-on-dark ghost a
+ *               dark band would otherwise get
  */
 const CORRECTIONS = {
   'sbs-testimonial-p15-v1': { across: 1 },
@@ -244,6 +504,8 @@ const CORRECTIONS = {
   'sbs-testimonial-p43-v1': { across: 1 },
   'sbs-testimonial-p43-v2': { across: 2 },
   'sbs-testimonial-p10-v1': { across: 2 },
+  'sbs-timeline-p1-v2': { stickyHeading: true },
+  'sbs-hero-p1-v1': { buttons: 'standard' },
   'sbs-stats-p31-v2': { valign: 'start', stickyMedia: true, fullList: true },
   'sbs-stats-p31-v3': { valign: 'start', stickyMedia: true },
 };
@@ -259,6 +521,18 @@ function correct(pattern) {
   let changed = 0;
   const walk = (node) => {
     const attrs = node.attributes || (node.attributes = {});
+    /*
+     * The band keeps its light copy and loses the ghost primary.
+     *
+     * On a dark band the primary is drawn white-filled with a dark label, which
+     * reads as a secondary action rather than the main one. `standard` asks for
+     * the accent fill instead; the renderer leaves the outlined secondary
+     * following the band, since an outline has to be the band's own ink.
+     */
+    if (fix.buttons && node.component === 'ds-blocks/c-btn') {
+      attrs.groupTheme = fix.buttons;
+      changed += 1;
+    }
     if (fix.across && node.component === 'ds-blocks/c-cards') {
       attrs.columns = fix.across;
       attrs.columnsDesktop = fix.across;
@@ -286,6 +560,19 @@ function correct(pattern) {
       attrs.alignVertical = fix.valign === 'start' ? 'top' : fix.valign;
       changed += 1;
     }
+    /*
+     * The heading column holds still while the entries scroll past it.
+     *
+     * Same mechanism as `stickyMedia`, different subject: a two-column timeline
+     * puts its heading beside a list twice its height, and letting the heading
+     * scroll away leaves the entries unlabelled halfway down the band.
+     */
+    if (fix.stickyHeading && node.component === 'ds-blocks/ds-column' && holds(node, 'ds-blocks/c-heading')) {
+      const marks = String(attrs.class || '').split(/\s+/).filter(Boolean);
+      if (!marks.includes('is-sticky-heading')) marks.push('is-sticky-heading');
+      attrs.class = marks.join(' ');
+      changed += 1;
+    }
     if (fix.stickyMedia && node.component === 'ds-blocks/ds-column' && holds(node, 'ds-blocks/c-media')) {
       // `class` is a registered attribute on every DST block, so this survives
       // the export allow-list and reaches WordPress as a real class.
@@ -308,7 +595,7 @@ function correct(pattern) {
 
 const check = process.argv.includes('--check');
 const data = JSON.parse(readFileSync(DATA, 'utf8'));
-const tally = { media: 0, overlays: 0, marquees: 0, columns: 0, sliders: 0, heroOverlays: 0, links: 0, corrections: 0 };
+const tally = { media: 0, overlays: 0, marquees: 0, columns: 0, sliders: 0, heroOverlays: 0, links: 0, corrections: 0, scrims: 0, legacyAttributes: 0 };
 for (const pattern of data.patterns) clean(pattern.tree, pattern, tally);
 for (const pattern of data.patterns) tally.corrections += correct(pattern);
 

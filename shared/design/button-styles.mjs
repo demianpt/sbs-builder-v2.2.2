@@ -143,9 +143,9 @@ const STYLE_CSS = Object.freeze({
 #sbs-site .c-btn.-secondary{--sbs-btn-sweep:var(--dst--base-text-color);border-width:var(--sbs-border-width)}
 #sbs-site .c-btn.-secondary:hover{color:var(--dst--body-bg)}
 #sbs-site .c-btn.-primary-inverted{--sbs-btn-sweep:var(--dst--primary-color2)}
-#sbs-site .c-btn.-primary-inverted:hover{color:#fff}
+#sbs-site .c-btn.-primary-inverted:hover{color:var(--sbs-on-accent,#fff)}
 #sbs-site .c-btn.-secondary-inverted{--sbs-btn-sweep:#fff}
-#sbs-site .c-btn.-secondary-inverted:hover{color:var(--dst--primary-color3)}
+#sbs-site .c-btn.-secondary-inverted:hover{color:var(--sbs-on-white,var(--dst--primary-color3))}
 #sbs-site .c-btn.-link{padding-bottom:.28em}
 #sbs-site .c-btn.-link:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:currentColor;transform:scaleX(0);transform-origin:left center;transition:transform var(--sbs-motion-duration) var(--sbs-motion-ease)}
 #sbs-site .c-btn.-link:hover:after{transform:scaleX(1)}
@@ -183,7 +183,7 @@ const STYLE_CSS = Object.freeze({
 #sbs-site .c-btn.-secondary{--sbs-btn-flood:var(--dst--primary-color3)}
 #sbs-site .c-btn.-secondary:hover{color:var(--sbs-on-ink,#fff);background:transparent;border-color:var(--dst--primary-color3)}
 #sbs-site .c-btn.-primary-inverted,#sbs-site .c-btn.-secondary-inverted{color:#fff;--sbs-btn-flood:#fff}
-#sbs-site .c-btn.-primary-inverted:hover,#sbs-site .c-btn.-secondary-inverted:hover{color:var(--dst--primary-color3);background:transparent}
+#sbs-site .c-btn.-primary-inverted:hover,#sbs-site .c-btn.-secondary-inverted:hover{color:var(--sbs-on-white,var(--dst--primary-color3));background:transparent}
 #sbs-site .c-btn.-link{--sbs-btn-weight:600;padding-bottom:.3em}
 #sbs-site .c-btn.-link:after{content:"";position:absolute;left:50%;right:50%;bottom:0;height:2px;background:var(--dst--primary-color2);transition:left var(--sbs-motion-duration) var(--sbs-motion-ease),right var(--sbs-motion-duration) var(--sbs-motion-ease)}
 #sbs-site .c-btn.-link:hover{letter-spacing:.02em}
@@ -203,9 +203,9 @@ const STYLE_CSS = Object.freeze({
 #sbs-site .c-btn.-secondary{--sbs-btn-split:var(--dst--base-text-color)}
 #sbs-site .c-btn.-secondary:hover{color:var(--dst--body-bg)}
 #sbs-site .c-btn.-primary-inverted{--sbs-btn-split:var(--dst--primary-color2)}
-#sbs-site .c-btn.-primary-inverted:hover{color:#fff}
+#sbs-site .c-btn.-primary-inverted:hover{color:var(--sbs-on-accent,#fff)}
 #sbs-site .c-btn.-secondary-inverted{--sbs-btn-split:#fff}
-#sbs-site .c-btn.-secondary-inverted:hover{color:var(--dst--primary-color3)}
+#sbs-site .c-btn.-secondary-inverted:hover{color:var(--sbs-on-white,var(--dst--primary-color3))}
 #sbs-site .c-btn.-link{padding-bottom:.28em;border-bottom:2px solid color-mix(in srgb,currentColor 28%,transparent)}
 #sbs-site .c-btn.-link:hover{border-bottom-color:currentColor;color:var(--dst--primary-color2)}
 #sbs-site .c-btn:hover .sbs-btn-arrow{transform:translateY(-2px)}
@@ -222,9 +222,9 @@ const STYLE_CSS = Object.freeze({
 #sbs-site .c-btn.-secondary{--sbs-btn-wedge:var(--dst--base-text-color)}
 #sbs-site .c-btn.-secondary:hover{color:var(--dst--body-bg)}
 #sbs-site .c-btn.-primary-inverted{--sbs-btn-wedge:var(--dst--primary-color2)}
-#sbs-site .c-btn.-primary-inverted:hover{color:#fff}
+#sbs-site .c-btn.-primary-inverted:hover{color:var(--sbs-on-accent,#fff)}
 #sbs-site .c-btn.-secondary-inverted{--sbs-btn-wedge:#fff}
-#sbs-site .c-btn.-secondary-inverted:hover{color:var(--dst--primary-color3)}
+#sbs-site .c-btn.-secondary-inverted:hover{color:var(--sbs-on-white,var(--dst--primary-color3))}
 #sbs-site .c-btn.-link{--sbs-btn-ls:.04em;text-transform:uppercase;font-size:.92em;padding-bottom:.26em;border-bottom:2px solid currentColor}
 #sbs-site .c-btn.-link:hover{color:var(--dst--primary-color2)}
 #sbs-site .c-btn:hover .sbs-btn-arrow{transform:translate(3px,-3px)}
@@ -276,9 +276,9 @@ const STYLE_CSS = Object.freeze({
 #sbs-site .c-btn.-secondary{--sbs-btn-ink:var(--dst--primary-color2)}
 #sbs-site .c-btn.-secondary:hover{color:var(--sbs-on-accent,#fff);border-color:var(--dst--primary-color2)}
 #sbs-site .c-btn.-primary-inverted{--sbs-btn-ink:var(--dst--primary-color2)}
-#sbs-site .c-btn.-primary-inverted:hover{color:#fff}
+#sbs-site .c-btn.-primary-inverted:hover{color:var(--sbs-on-accent,#fff)}
 #sbs-site .c-btn.-secondary-inverted{--sbs-btn-ink:#fff}
-#sbs-site .c-btn.-secondary-inverted:hover{color:var(--dst--primary-color3)}
+#sbs-site .c-btn.-secondary-inverted:hover{color:var(--sbs-on-white,var(--dst--primary-color3))}
 #sbs-site .c-btn.-link{padding-bottom:.26em;overflow:hidden}
 #sbs-site .c-btn.-link:after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--dst--primary-color2);transform:translateX(-101%) skewX(-18deg);transition:transform var(--sbs-motion-duration) var(--sbs-motion-ease)}
 #sbs-site .c-btn.-link:hover:after{transform:translateX(0) skewX(-18deg)}

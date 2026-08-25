@@ -613,8 +613,18 @@ function effectAttrs(section){const e=section.effects||{};const parts=[];if(e.vi
 function renderSection(section,index,project){ensureSectionSettings(section);syncSectionNode(section);const ctx={section,sectionIndex:index,project,family:section.family,top:true,topHeading:true,h1Used:false,nestedHeading:false};if(['ds-blocks/dst-wrapper','ds-blocks/dst-banner'].includes(section.node.component))return renderNode(section.node,ctx);return `<section id="${escAttr(section.id)}" class="dst-wrapper c-full ${sectionClasses(section)} ${sectionBgClass(section,index)}" ${effectAttrs(section)}>${renderDecoration(section)}<div class="dst-wrapper__inner ${containerClass(section.layout?.container||'default')}">${renderNode(section.node,{...ctx,top:false})}</div></section>`}
 function renderHeader(project){const h=project.header,b=project.brief;return `<header class="site-header is-sticky has-glass"><div class="site-header__row c-default"><a class="site-header__logo" href="#top"><span class="sbs-logo-mark">VC</span><span>${esc(h.logoText||b.clientName)}</span></a><button class="sbs-menu-toggle" aria-expanded="false" aria-label="Open navigation"><span></span><span></span><span></span></button><nav class="nav-menu">${(h.nav||[]).map(([label,url])=>`<a href="${escAttr(normalizeLink(url))}">${esc(label)}</a>`).join('')}</nav><a class="c-btn -primary -small sbs-header-cta" href="${escAttr(normalizeLink(h.cta?.link||'#contact'))}">${esc(h.cta?.text||'Contact')}</a></div></header>`}
 function renderFooter(project){const f=project.footer,b=project.brief;return `<footer class="site-footer is-style-colors-inverted sbs-footer"><div class="c-default"><div class="footer__top sbs-footer-statement"><span class="c-heading__pre">${esc(b.clientName)}</span><h2 class="footer__nl-head">${rich(f.statement)}</h2><p class="footer__nl-sub">${rich(f.description)}</p><a class="c-btn -primary-inverted" href="#contact">Start a conversation <span aria-hidden="true">↗</span></a></div><div class="footer__divider"></div><div class="footer__cols"><div class="footer__col"><div class="site-header__logo sbs-footer-logo"><span class="sbs-logo-mark">VC</span><span>${esc(b.clientName)}</span></div><p>${rich(b.offer)}</p><div class="dst-socials"><a class="dst-social" href="#" aria-label="LinkedIn">in</a><a class="dst-social" href="#" aria-label="Email">@</a></div></div>${(f.columns||[]).map(col=>`<div class="footer__col"><h4>${esc(col.title)}</h4><ul class="footer__menu">${(col.links||[]).map(([l,u])=>`<li><a href="${escAttr(normalizeLink(u))}">${esc(l)}</a></li>`).join('')}</ul></div>`).join('')}</div><div class="footer__bottom"><div class="footer__legal">${esc(f.legal)}</div><ul class="footer__privacy"><li><a href="#privacy">Privacy</a></li><li><a href="#accessibility">Accessibility</a></li></ul></div></div><div class="footer__wordmark is-bottom" aria-hidden="true">${esc(b.clientName.split(' ')[0]||'SBS')}</div></footer>`}
-function siteCss(project){const d=project.design,p=d.palette,onAccent=readableOn(p.accent,['#ffffff',p.ink,p.dark]),onInk=readableOn(p.ink,['#ffffff',p.bg,p.soft]),onDark=readableOn(p.dark,['#ffffff',p.bg,p.soft]),vg=(6.8+(d.density/100)*4.2).toFixed(2),h1=(5.8+(d.expressiveness/100)*2.5).toFixed(2),motion=(.55+(d.motion/100)*.55).toFixed(2);return `
-html{scroll-behavior:smooth;background:${p.bg}}body{margin:0;background:${p.bg};overflow-x:clip}#sbs-site.ver{display:block;min-height:100vh;--dst--primary-color1:${p.dark};--dst--primary-color2:${p.accent};--dst--primary-color3:${p.ink};--dst--secondary-color1:#fff;--dst--secondary-color2:${p.bg};--dst--secondary-color3:${p.soft};--dst--secondary-color4:${p.accent};--dst--secondary-color5:${p.soft};--dst--secondary-color6:${p.accent};--dst--secondary-color7:#fff;--dst--secondary-color8:${p.accent};--dst--body-bg:${p.bg};--dst--body-bg-alt:${p.dark};--dst--base-text-color:${p.ink};--dst--base-text-color-alt:#f7f5ef;--dst--base-heading-color:${p.ink};--dst--base-heading-color-alt:#fff;--dst--base-link-color:${p.accent};--dst--base-link-color-alt:#f7f5ef;--dst--border-color:${p.soft};--dst--border-color-alt:rgba(255,255,255,.18);--dst--pretitle-color:${p.accent};--dst--pretitle-color-alt:#fff;--dst--subtitle-color:${p.ink};--dst--subtitle-color-alt:rgba(255,255,255,.78);--dst--font-primary:'${d.fontBody}',system-ui,sans-serif;--dst--font-secondary:'${d.fontDisplay}',Georgia,serif;--dst--fs-h1:clamp(4.2rem,${h1}vw,10.2rem);--dst--fs-h2:clamp(3.2rem,4.4vw,7rem);--dst--fs-h3:clamp(2.2rem,2.2vw,3.6rem);--dst--fs-h4:clamp(1.8rem,1.5vw,2.4rem);--dst--fs-pretitle:clamp(1.1rem,.4vw + 1rem,1.4rem);--dst--fs-subtitle:clamp(1.8rem,.5vw + 1.55rem,2.2rem);--dst--fs-base:clamp(1.6rem,.15vw + 1.55rem,1.8rem);--dst--fs-lg:clamp(1.9rem,.3vw + 1.7rem,2.3rem);--dst--base-lh:1.65;--dst--default-radius:${d.radius};--dst--default-container-width:1440px;--dst--wide-container-width:1780px;--dst--alt-container-width:1060px;--dst--desktop-vertical-gap:${vg}vmin;--dst--vgap-s:5.2vmin;--dst--vgap-l:13vmin;--dst--header-height:84px;--sbs-on-accent:${onAccent};--sbs-on-ink:${onInk};--sbs-on-dark:${onDark};--dst--btn-ff:var(--dst--font-primary);--dst--btn-br:${d.radius};--dst--btn-p:1.55rem 2.7rem;--dst--btn-fs:1.5rem;--dst--btn-fw:650;--dst--btn-primary-c:${onAccent};--dst--btn-primary-bg:${p.accent};--dst--btn-primary-bdc:${p.accent};--dst--btn-primary-c-hover:${onDark};--dst--btn-primary-bg-hover:${p.dark};--dst--btn-secondary-c:${p.ink};--dst--btn-secondary-bg:transparent;--dst--btn-secondary-bdc:${p.ink};--dst--btn-secondary-c-hover:${onInk};--dst--btn-secondary-bg-hover:${p.ink};--dst--btn-secondary-inverted-c:#fff;--dst--btn-secondary-inverted-bdc:rgba(255,255,255,.65);--dst--btn-secondary-inverted-bg-hover:#fff;--dst--btn-secondary-inverted-c-hover:${p.dark};--dst--btn-primary-inverted-c:${p.dark};--dst--btn-primary-inverted-bg:#fff;--dst--btn-primary-inverted-bg-hover:${p.accent};--dst--btn-primary-inverted-c-hover:${onAccent};font-family:var(--dst--font-primary);font-size:var(--dst--fs-base);color:var(--dst--base-text-color);background:var(--dst--body-bg)}
+/*
+ * `--sbs-on-white` is the label for a fill that is actually white.
+ *
+ * Several button families invert on hover by flooding the shape with `#fff`
+ * and then setting the label to `--dst--primary-color3`, the ink role — which
+ * is dark only when the palette is light. On a dark palette ink *is* the light
+ * colour, so the hover painted a light label on a white fill: 1.2:1, measured
+ * on five of the ten families. A fill of a known colour needs a label chosen
+ * for that colour, not for a role that changes tone with the palette.
+ */
+function siteCss(project){const d=project.design,p=d.palette,onAccent=readableOn(p.accent,['#ffffff',p.ink,p.dark]),onInk=readableOn(p.ink,['#ffffff',p.bg,p.soft]),onDark=readableOn(p.dark,['#ffffff',p.bg,p.soft]),onWhite=readableOn('#ffffff',[p.dark,p.ink,p.accent]),vg=(6.8+(d.density/100)*4.2).toFixed(2),h1=(5.8+(d.expressiveness/100)*2.5).toFixed(2),motion=(.55+(d.motion/100)*.55).toFixed(2);return `
+html{scroll-behavior:smooth;background:${p.bg}}body{margin:0;background:${p.bg};overflow-x:clip}#sbs-site.ver{display:block;min-height:100vh;--dst--primary-color1:${p.dark};--dst--primary-color2:${p.accent};--dst--primary-color3:${p.ink};--dst--secondary-color1:#fff;--dst--secondary-color2:${p.bg};--dst--secondary-color3:${p.soft};--dst--secondary-color4:${p.accent};--dst--secondary-color5:${p.soft};--dst--secondary-color6:${p.accent};--dst--secondary-color7:#fff;--dst--secondary-color8:${p.accent};--dst--body-bg:${p.bg};--dst--body-bg-alt:${p.dark};--dst--base-text-color:${p.ink};--dst--base-text-color-alt:#f7f5ef;--dst--base-heading-color:${p.ink};--dst--base-heading-color-alt:#fff;--dst--base-link-color:${p.accent};--dst--base-link-color-alt:#f7f5ef;--dst--border-color:${p.soft};--dst--border-color-alt:rgba(255,255,255,.18);--dst--pretitle-color:${p.accent};--dst--pretitle-color-alt:#fff;--dst--subtitle-color:${p.ink};--dst--subtitle-color-alt:rgba(255,255,255,.78);--dst--font-primary:'${d.fontBody}',system-ui,sans-serif;--dst--font-secondary:'${d.fontDisplay}',Georgia,serif;--dst--fs-h1:clamp(4.2rem,${h1}vw,10.2rem);--dst--fs-h2:clamp(3.2rem,4.4vw,7rem);--dst--fs-h3:clamp(2.2rem,2.2vw,3.6rem);--dst--fs-h4:clamp(1.8rem,1.5vw,2.4rem);--dst--fs-pretitle:clamp(1.1rem,.4vw + 1rem,1.4rem);--dst--fs-subtitle:clamp(1.8rem,.5vw + 1.55rem,2.2rem);--dst--fs-base:clamp(1.6rem,.15vw + 1.55rem,1.8rem);--dst--fs-lg:clamp(1.9rem,.3vw + 1.7rem,2.3rem);--dst--base-lh:1.65;--dst--default-radius:${d.radius};--dst--default-container-width:1440px;--dst--wide-container-width:1780px;--dst--alt-container-width:1060px;--dst--desktop-vertical-gap:${vg}vmin;--dst--vgap-s:5.2vmin;--dst--vgap-l:13vmin;--dst--header-height:84px;--sbs-on-accent:${onAccent};--sbs-on-ink:${onInk};--sbs-on-dark:${onDark};--sbs-on-white:${onWhite};--dst--btn-ff:var(--dst--font-primary);--dst--btn-br:${d.radius};--dst--btn-p:1.55rem 2.7rem;--dst--btn-fs:1.5rem;--dst--btn-fw:650;--dst--btn-primary-c:${onAccent};--dst--btn-primary-bg:${p.accent};--dst--btn-primary-bdc:${p.accent};--dst--btn-primary-c-hover:${onDark};--dst--btn-primary-bg-hover:${p.dark};--dst--btn-secondary-c:${p.ink};--dst--btn-secondary-bg:transparent;--dst--btn-secondary-bdc:${p.ink};--dst--btn-secondary-c-hover:${onInk};--dst--btn-secondary-bg-hover:${p.ink};--dst--btn-secondary-inverted-c:#fff;--dst--btn-secondary-inverted-bdc:rgba(255,255,255,.65);--dst--btn-secondary-inverted-bg-hover:#fff;--dst--btn-secondary-inverted-c-hover:${p.dark};--dst--btn-primary-inverted-c:${p.dark};--dst--btn-primary-inverted-bg:#fff;--dst--btn-primary-inverted-bg-hover:${p.accent};--dst--btn-primary-inverted-c-hover:${onAccent};font-family:var(--dst--font-primary);font-size:var(--dst--fs-base);color:var(--dst--base-text-color);background:var(--dst--body-bg)}
 #sbs-site *{box-sizing:border-box}#sbs-site a{transition:color .2s ease,background-color .2s ease,border-color .2s ease,transform .2s ease}#sbs-site h1,#sbs-site h2,#sbs-site h3,#sbs-site h4{font-weight:600}#sbs-site .c-heading__title{letter-spacing:-.035em;text-wrap:balance}#sbs-site .c-heading__sub{opacity:.83}#sbs-site .c-heading__pre{font-family:var(--dst--font-primary);font-weight:700;letter-spacing:.18em}#sbs-site .c-heading__description{gap:2.3rem}#sbs-site .sbs-rich-text{max-width:66ch}#sbs-site .sbs-rich-text p{font-size:var(--dst--fs-lg);line-height:1.62;margin:0;color:inherit;opacity:.88}#sbs-site .c-heading.text-center .sbs-rich-text{margin-inline:auto}#sbs-site .c-heading.text-center .sbs-rich-text p{margin-inline:auto}
 .site-header{background:color-mix(in srgb,${p.bg} 90%,transparent);border-bottom:1px solid color-mix(in srgb,${p.ink} 11%,transparent);transition:background .25s,box-shadow .25s}.site-header.is-stuck{background:color-mix(in srgb,${p.bg} 97%,transparent);box-shadow:0 8px 30px rgba(7,28,42,.07)}.site-header__row{min-height:84px;padding-block:1.2rem}.site-header__logo{display:inline-flex;align-items:center;gap:1rem;text-decoration:none;font-family:var(--dst--font-primary);font-size:1.65rem;letter-spacing:-.01em}.sbs-logo-mark{width:3.8rem;height:3.8rem;display:grid;place-items:center;background:${p.dark};color:#fff;font-size:1.05rem;letter-spacing:.06em;font-weight:800}.nav-menu{gap:3rem}.nav-menu a{font-size:1.45rem;font-weight:600}.sbs-header-cta{margin-left:1rem}.sbs-menu-toggle{display:none;width:4.2rem;height:4.2rem;border:0;background:transparent;margin-left:auto;padding:1rem}.sbs-menu-toggle span{display:block;width:100%;height:1px;background:currentColor;margin:.7rem 0}
 .sbs-band-paper{background:${p.bg}}.sbs-band-soft{background:color-mix(in srgb,${p.soft} 58%,${p.bg})}.sbs-band-tint{background:color-mix(in srgb,${p.accent} 5%,${p.bg})}.sbs-band-dark{background:${p.dark}}.dst-wrapper{position:relative}.dst-wrapper__content,.dst-wrapper__inner{position:relative;z-index:1}.dst-wrapper.c-full>.dst-wrapper__content>.dst-wrapper__inner{width:100%}.dst-wrapper>.c-decoration{z-index:0}.c-decoration{overflow:hidden}.dst-deco--cover{inset:0}.dst-deco--top,.dst-deco--bottom{height:24rem}.dst-deco--center{width:55vmin;height:55vmin}.dst-deco--top-left,.dst-deco--top-right,.dst-deco--bottom-left,.dst-deco--bottom-right{width:min(34rem,32vw);height:min(34rem,32vw)}
@@ -736,7 +746,28 @@ function normalizeExportSection(section){syncSectionNode(section);let node=norma
     delete node.layout.fullWidthWrapper;delete node.attributes.fullWidthWrapper}
   const directFx=/^(fade($|-)|zoom-|slide-)/.test(String(node.dsEffects?.type||''))&&!String(node.dsEffects?.type||'').startsWith('fade-in-seq');if((node.decorations||[]).length&&directFx&&node.children?.length){node.children[0].dsEffects=deepClone(node.dsEffects);delete node.dsEffects}
   node.pattern=section.patternId;node.role=section.family;node.usage=FAMILY_USAGE[section.family]||node.usage||'section';node.inverted=!!section.layout?.inverted;node.note=`Built from ${section.patternId} (${patternLabel(section)}); edited in the SBS DST Page Builder.`;node.composed={patternId:section.patternId,family:section.family,source:'attached-skill-library'};return node}
-function hexRgb(hex){let h=String(hex||'').replace('#','');if(h.length===3)h=h.split('').map(x=>x+x).join('');if(!/^[0-9a-f]{6}$/i.test(h))return [255,255,255];return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16))}
+/*
+ * A colour's channels, whatever notation it arrived in.
+ *
+ * `#RRGGBBAA` used to fall through to the white fallback, and white is the worst
+ * possible wrong answer: every tone decision downstream reads it as a light
+ * ground and puts dark type on it. `sbs-hero-p1-v1` scrims its photograph with
+ * `#333333b0` — very dark at 69% — and got dark copy on a dark band because of
+ * this one line. The export's own overlay fold produces eight-digit hex too, so
+ * the notation is now more common than when this was written.
+ *
+ * The alpha is dropped rather than composited: luminance here answers "is this
+ * colour light or dark", and how much of it is painted is a separate question the
+ * callers already ask with `v2ColorAlpha`.
+ */
+function hexRgb(hex){
+  let h=String(hex||'').trim().replace('#','');
+  if(h.length===4)h=h.slice(0,3);
+  if(h.length===8)h=h.slice(0,6);
+  if(h.length===3)h=h.split('').map(x=>x+x).join('');
+  if(!/^[0-9a-f]{6}$/i.test(h))return [255,255,255];
+  return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16));
+}
 function relativeLum(hex){return hexRgb(hex).map(v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)}).reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0)}
 function headerExport(project){const h=project.header;return {id:'site-header',component:'ds-blocks/dst-navigation',usage:'header',role:'header',confidence:'confirmed',importerShorthand:true,note:'Concept-level DST navigation shorthand for the importer to expand into the production navigation block family.',layout:{container:'default',background:{kind:'slot',slot:'body-bg'}},attributes:{displayType:h.position||'sticky',dsContainerAlign:'center'},linkTypography:{ref:'theme.elements.navigation.mainLink'},nav:{logo:{text:h.logoText||project.brief.clientName},menu:(h.nav||[]).map(([label,url])=>({label,url:normalizeLink(url)})),cta:{label:h.cta?.text||'Contact',url:normalizeLink(h.cta?.link||'#contact'),btnType:'primary'}},children:[]}}
 function footerExport(project){const f=project.footer;return {id:'site-footer',component:'ds-blocks/dst-wrapper',usage:'footer',role:'footer',confidence:'confirmed',inverted:true,importerShorthand:true,note:'Three-band DST footer shorthand. The importer expands this into the project template part.',layout:{padding:{top:'default',bottom:'default'},container:'full',background:{kind:'slot',slot:'body-bg-alt'},fullWidthWrapper:true},attributes:{fullWidthWrapper:true,backgroundColor:'var(--dst--body-bg-alt)'},footer:{variant:'footer-v1',top:{heading:f.statement,subheading:f.description},columns:[{kind:'brand',logo:true,socialsTitle:'Connect',body:project.brief.offer},...(f.columns||[]).map(c=>({kind:'menu',heading:c.title,menuLocation:c.menuLocation||'footer-menu',links:(c.links||[]).map(([label,url])=>({label,url:normalizeLink(url)}))}))],columnWidths:['1.6fr','1fr','1fr'],columnsTablet:2,columnsMobile:1,bottom:{copyright:f.legal,privacyMenu:{menuLocation:'privacy-menu',links:[{label:'Privacy Policy',url:'#privacy'},{label:'Accessibility',url:'#accessibility'}]}},headingTypography:{tag:'div',preset:'h4-style',fontFamily:'var(--dst--font-primary)',textTransform:'uppercase',letterSpacing:'.08em',fontSize:'1.4rem',fontWeight:700},iconColor:'var(--dst--primary-color2)',legalColor:'var(--dst--base-text-color-alt)',dividerColor:'rgba(255,255,255,.18)'},children:[{id:'footer-socials',component:'ds-blocks/dst-social-networks',usage:'socials',confidence:'confirmed',attributes:{socialSource:'custom',layoutDirection:'horizontal',alignDesktop:'flex-start',socialNetworks:[{id:'linkedin',network:'linkedin',label:'LinkedIn',url:'#'},{id:'email',network:'email',label:'Email',url:'#contact'}],showCaptions:false,socialIconGap:'1.2rem'}}],decorations:[{kind:'motif',motif:'tick-scale',color:'secondary-color1',position:'right',opacity:.1,scale:.9,rationale:'A measured edge rail reinforces the continuity and readiness brief without becoming a generic texture.'}]}}
@@ -1245,7 +1276,17 @@ function v2HeadingTag(a,isHero,nested){if(isHero)return 'h1';var tag=String((a.t
 function v2RenderHeading(node,ctx){
   var a=node.attributes||{},desktop=v2NormalizeAlign(ctx.section.layout.headingAlign||a.alignment||'left','left'),mobile=v2NormalizeAlign(ctx.section.layout.headingAlignMobile||a.alignmentMobile||desktop,desktop),contentDesktop=v2NormalizeAlign(ctx.section.layout.contentAlign||desktop,desktop),contentMobile=v2NormalizeAlign(ctx.section.layout.contentAlignMobile||contentDesktop,contentDesktop),stateRef=ctx.headingState||(ctx.headingState={h1Used:false}),isHero=ctx.family==='hero'&&!stateRef.h1Used;if(isHero)stateRef.h1Used=true;var tag=v2HeadingTag(a,isHero,ctx.nestedHeading),size=v2HeadingSizeClass(a,isHero,ctx.nestedHeading),title=a.title||'',children=nodeChildren(node,{...ctx,nestedHeading:true,headingAlignment:contentDesktop}),classes=['dst-heading','c-heading','text-'+desktop,'text-'+mobile+'-mobile',desktop==='center'?'-center':'',ctx.topHeading?'mb-s':'',v2SurfaceInverted(ctx)?'is-style-colors-inverted':'',a.headingLayoutVariant==='dst-heading-v2'?'is-heading-split':'',a.keepTabletColumns?'keep-tablet-columns':''].filter(Boolean).join(' '),titleStyle=v2TypographyCss(a.titleTypography),subStyle=v2TypographyCss(a.subtitleTypography,HEADING_SUB_SKIP)+(a.subtitleHasCustomWidth&&a.subtitleCustomWidth?'max-width:'+a.subtitleCustomWidth+';':'');var pre=a.showPretitle!==false&&a.pretitle?'<div class="c-heading__pre" style="'+v2TypographyCss(a.pretitleTypography)+'">'+v2Rich(a.pretitle)+'</div>':'',back=a.backtitle?'<div class="c-heading__preamble '+(a.animateBacktitle?'is-animated':'')+'"><div>'+v2Rich(a.backtitle)+'</div></div>':'',heading=a.showTitle!==false&&title?'<'+tag+' class="c-heading__title '+size+'" style="'+titleStyle+'">'+accentTitle(title,node.titleAccents)+'</'+tag+'>':'',sub=a.showSubtitle!==false&&a.subtitle?'<div class="c-heading__sub text-'+contentDesktop+'" style="'+subStyle+'">'+v2Rich(a.subtitle)+'</div>':'',desc=children?'<div class="c-heading__description text-'+contentDesktop+' text-'+contentMobile+'-mobile">'+children+'</div>':'';if(a.headingLayoutVariant==='dst-heading-v2'&&(sub||desc)){var right=contentDesktop,ratio=String(a.headingColumnsRatio||'50%').replace('%',''),gap=a.headingColumnsGap||'4rem';return '<div class="'+classes+'" data-heading-align="'+desktop+'" data-heading-mobile-align="'+mobile+'" style="--heading-left:'+escAttr(ratio)+'%;--heading-gap:'+escAttr(gap)+'"><div class="c-heading__lead">'+back+pre+heading+'</div><div class="c-heading__support text-'+right+'">'+sub+desc+'</div></div>'}return '<div class="'+classes+'" data-heading-align="'+desktop+'" data-heading-mobile-align="'+mobile+'">'+back+pre+heading+sub+desc+'</div>';
 }
-function v2RenderButton(node,ctx){var a=node.attributes||{};if(!cleanText(a.text))return '';var type=a.btnType||'primary',inverted=ctx.section.layout&&ctx.section.layout.inverted||a.groupTheme==='inverted',cls=type==='link'?'-link':type==='secondary'?(inverted?'-secondary-inverted':'-secondary'):(inverted?'-primary-inverted':'-primary'),size=a.btnSize?'-'+a.btnSize:'';var link=normalizeLink(a.link),icon=a.hasIcon!==false?'<span class="sbs-btn-arrow" aria-hidden="true">↗</span>':'';return '<a class="c-btn '+cls+' '+size+'" href="'+escAttr(link)+'" data-dst-component="ds-blocks/c-btn"><span class="c-btn__txt">'+esc(a.text||'Learn more')+'</span>'+icon+'</a>'}
+/*
+ * `groupTheme` used to be able to add inversion and never remove it, so a dark
+ * band always got the ghost primary: white fill, dark label. Some bands want the
+ * ordinary filled primary instead — the accent with a light label — and there
+ * was no way to say so.
+ *
+ * `groupTheme: 'standard'` says it. It moves the primary only: an *outlined*
+ * button has to be drawn in the band's own ink to be visible at all, so the
+ * secondary keeps following the band whatever the group asks for.
+ */
+function v2RenderButton(node,ctx){var a=node.attributes||{};if(!cleanText(a.text))return '';var type=a.btnType||'primary',theme=String(a.groupTheme||''),inverted=ctx.section.layout&&ctx.section.layout.inverted||theme==='inverted',fillInverted=theme==='standard'?false:inverted,cls=type==='link'?'-link':type==='secondary'?(inverted?'-secondary-inverted':'-secondary'):(fillInverted?'-primary-inverted':'-primary'),size=a.btnSize?'-'+a.btnSize:'';var link=normalizeLink(a.link),icon=a.hasIcon!==false?'<span class="sbs-btn-arrow" aria-hidden="true">↗</span>':'';return '<a class="c-btn '+cls+' '+size+'" href="'+escAttr(link)+'" data-dst-component="ds-blocks/c-btn"><span class="c-btn__txt">'+esc(a.text||'Learn more')+'</span>'+icon+'</a>'}
 function v2RenderButtonGroup(node,ctx){var a=node.attributes||{},desktop=v2NormalizeAlign(a.justifyContent||ctx.headingAlignment||'left','left'),mobile=v2NormalizeAlign(a.justifyContentMobile||desktop,desktop),vertical=String(a.alignment||'horizontal')==='vertical',gap=v2CssUnit(a.gapBetween||'1.2rem');return '<div class="dst-button-group justify-'+desktop+' justify-'+mobile+'-mobile '+(vertical?'is-vertical':'')+'" style="--button-gap:'+escAttr(gap)+'" data-dst-component="ds-blocks/button-group">'+nodeChildren(node,{...ctx,buttonAlign:desktop})+'</div>'}
 function v2CardOverlay(settings){var bg=cleanCssValue(settings.backgroundOverlayEnabled!==false&&settings.backgroundOverlay||settings.mediaOverlay)||'linear-gradient(180deg,rgba(7,28,42,.02),rgba(7,28,42,.92))',op=Number(settings.backgroundOverlayOpacity);return 'background:'+bg+';opacity:'+(Number.isFinite(op)?op:1)+';'}
 function v2RenderCard(node,ctx){
@@ -6804,16 +6845,39 @@ siteCss=function(project){
      * element silently turns it back into a static one, and `.has-bg-media` and
      * the decoration layers both set it.
      */
-    '#sbs-site .ds-column.is-sticky-media{position:sticky;top:0;align-self:start}',
-    '#sbs-site .ds-row:has(.is-sticky-media){align-items:start}',
+    /*
+     * One sticky offset for the whole page.
+     *
+     * `top:0` pinned a held column under the sticky header, which covered the top
+     * of the picture. `--sbs-sticky-top` is the single value every sticky element
+     * uses — the held media column, the timeline counter, the stacking cards — so
+     * they line up with each other instead of each choosing its own.
+     */
+    '#sbs-site{--sbs-sticky-top:12rem}',
+    '#sbs-site .ds-column.is-sticky-media{position:sticky;top:var(--sbs-sticky-top,12rem);align-self:start}',
+    '#sbs-site .ds-row:has(.is-sticky-media){position:relative;align-items:start}',
     '#sbs-site .dst-wrapper:has(.is-sticky-media),#sbs-site .ds-columns:has(.is-sticky-media){overflow:visible}',
     '#sbs-site .ds-column.is-sticky-media .dst-media,#sbs-site .ds-column.is-sticky-media .ph{max-height:100%}',
     // A held picture that is taller than the viewport can never be seen whole,
     // so it is bounded by the window rather than by the row beside it.
-    '@media(min-width:901px){#sbs-site .ds-column.is-sticky-media>*{max-height:calc(100vh - 2rem)}}',
+    '@media(min-width:901px){#sbs-site .ds-column.is-sticky-media>*{max-height:calc(100vh - var(--sbs-sticky-top,12rem) - 2rem)}}',
     // Sticky and a phone's single column do not mix: the picture would pin to
     // the top and the copy would scroll under it.
-    '@media(max-width:900px){#sbs-site .ds-column.is-sticky-media{position:static}}'
+    '@media(max-width:900px){#sbs-site .ds-column.is-sticky-media{position:static}}',
+    /*
+     * The held heading column.
+     *
+     * Its row is the containing block, so the row is the one that has to be
+     * positioned — a sticky element resolves its offsets against the nearest
+     * positioned ancestor, and without that it pins to the viewport and slides
+     * out of its own band.
+     */
+    '#sbs-site .ds-row:has(.is-sticky-heading){position:relative;align-items:start}',
+    '#sbs-site .ds-column.is-sticky-heading{position:sticky;top:var(--sbs-sticky-top,12rem);align-self:start}',
+    '#sbs-site .dst-wrapper:has(.is-sticky-heading),#sbs-site .ds-columns:has(.is-sticky-heading){overflow:visible}',
+    // Sticky and one column do not mix: the heading would pin and the entries
+    // would scroll underneath it.
+    '@media(max-width:900px){#sbs-site .ds-column.is-sticky-heading{position:static}}'
   ].join('');
 };
 
@@ -6863,6 +6927,107 @@ var updateBindingBeforeV19=updateBinding;
 updateBinding=function(path,value,input){
   if(String(path||'')==='global.footer.wordmark')state.project.footer.wordmarkCustom=true;
   return updateBindingBeforeV19(path,value,input);
+};
+
+/* ================================================================== *
+ * v22 — A pale band paints in the palette's dark, and its buttons work
+ *
+ * v18 made the *band class* follow the overlay, so a hero fading white across
+ * the frame stopped claiming to be an inverted band. That was half the job. The
+ * other half is what `is-style-colors-standard` actually resolves to:
+ *
+ *   --dst--base-text-color   #EAEAEA   on a dark-ground concept palette
+ *
+ * `ink` is the page's text colour, and on a dark-ground palette it is a *pale*
+ * colour — correct against a near-black page and wrong against a white wash. So
+ * the headline, the pretitle, the supporting line and the outlined buttons all
+ * rendered #EAEAEA on white. Which is what the screenshots showed.
+ *
+ * On a pale band the copy uses the palette's **dark** role, explicitly. It is the
+ * one colour in the palette guaranteed to read on a light ground, and it is the
+ * colour a designer would reach for.
+ *
+ * Buttons had a second, separate problem: their variant was chosen from
+ * `section.layout.inverted` — the family preset — rather than from the tone the
+ * band actually resolved to. Two of these heroes therefore rendered
+ * `-primary-inverted` and `-secondary-inverted` on a white wash: a white outline
+ * and a white label on white. The renderer now reads the resolved surface.
+ * ================================================================== */
+
+/**
+ * The button variant follows the ground it sits on.
+ *
+ * `ctx.surfaceInverted` is what the banner and wrapper renderers already compute
+ * from the overlay; `layout.inverted` is only the family's opening guess. Reading
+ * the preset produced an invisible button on every pale hero.
+ */
+var v2RenderButtonBeforeV22=v2RenderButton;
+v2RenderButton=function(node,ctx){
+  var resolved=ctx&&ctx.surfaceInverted;
+  if(resolved===undefined||!ctx||!ctx.section)return v2RenderButtonBeforeV22(node,ctx);
+  var layout=ctx.section.layout||{},was=layout.inverted;
+  layout.inverted=!!resolved;
+  try{return v2RenderButtonBeforeV22(node,ctx)}
+  finally{layout.inverted=was}
+};
+
+var siteCssBeforeV22=siteCss;
+siteCss=function(project){
+  var palette=project.design.palette,dark=palette.dark,bg=palette.bg,accent=palette.accent;
+  /*
+   * `readableOn` picks the label colour for a filled dark button from the
+   * palette's own candidates rather than assuming white — a mid-dark brand
+   * colour needs the page ground, not #fff.
+   */
+  var onDark=readableOn(dark,['#ffffff',bg,palette.soft]);
+  var onAccent=readableOn(accent,['#ffffff',dark,palette.ink]);
+  // Only the bands the tone pass judged *pale* — a light wash over a photograph.
+  // `is-pale-overlay` is set by `sectionClasses` for exactly that case, which is
+  // narrower than the standard tone and has to be: on an ordinary light band the
+  // palette's dark role is the background.
+  var band='#sbs-site .is-pale-overlay';
+  return siteCssBeforeV22(project)+'\n'+[
+    /* The copy. `!important` because the tone layer already uses it, and the two
+       rules would otherwise be decided by source order. */
+    /*
+     * The band re-points the roles rather than overruling the families.
+     *
+     * Forcing `.c-btn.-primary{color:…!important}` assumed every family fills
+     * the primary with the accent. Three of the ten do not: Magnetic Arrow and
+     * Neon Trace leave it unfilled and take their label from the text role, so
+     * the forced light label landed on the pale wash itself. Feeding the roles
+     * the band actually has lets each family compute what it was written to
+     * compute — including its hover, which no `!important` here could reach.
+     *
+     * `primary-color3` is the ink role, which the families flood with as though
+     * it were dark; inside a pale band the dark role is what that means, and
+     * `--sbs-on-ink` has to follow it. `body-bg` is the plate Depth Press paints
+     * its secondary on, and on a dark palette that is a dark plate on a pale
+     * band — here the ground is the wash, so it is white.
+     */
+    band+'{--sbs-band-ink:'+dark+';'
+      +'--dst--base-text-color:'+dark+';--dst--base-heading-color:'+dark+';--dst--subtitle-color:'+dark+';'
+      +'--dst--primary-color3:'+dark+';--sbs-on-ink:'+onDark+';--dst--body-bg:#ffffff;'
+      +'--dst--btn-secondary-c:'+dark+';--dst--btn-secondary-bdc:'+dark+';'
+      +'--dst--btn-secondary-c-hover:'+onDark+';--dst--btn-secondary-bg-hover:'+dark+';'
+      +'--dst--btn-primary-c:'+onAccent+';--dst--btn-primary-bg:'+accent+';--dst--btn-primary-bdc:'+accent+';'
+      +'--dst--btn-primary-c-hover:'+onDark+';--dst--btn-primary-bg-hover:'+dark+';'
+      +'--dst--btn-link-c:'+dark+'}',
+    [band+' .c-heading__title',band+' .c-heading__pre',band+' .c-heading__sub',
+     band+' .c-heading__description',band+' .c-heading__description .sbs-rich-text',
+     band+' .sbs-rich-text p',band+' .dst-list__title',band+' .dst-list__description',
+     band+' .c-heading__backtitle'].join(',')+'{color:'+dark+'!important}',
+    /* The text button has no fill to reason about, so it is stated outright. */
+    band+' .c-btn.-link{color:'+dark+'!important}',
+    band+' .c-btn.-link:hover,'+band+' .c-btn.-link:focus-visible{color:'+accent+'!important}',
+    band+' .scroll-down{color:'+dark+'!important;opacity:.9}',
+    /* The eyebrow rule and the arrow glyph are drawn in currentColor, so they
+       follow — except the rule, which is painted from the accent on purpose. */
+    band+' .c-heading__pre::before{background:'+accent+'!important}',
+    /* Focus has to be visible on a pale ground too: the default ring is the
+       accent, which can be low-contrast against a white wash. */
+    band+' .c-btn:focus-visible{outline:2px solid '+dark+';outline-offset:3px}'
+  ].join('');
 };
 
 /* ================================================================== *
@@ -6996,6 +7161,92 @@ headerExport=function(project){return v21Clean(headerExportBeforeV21(project))};
 
 var footerExportBeforeV21=footerExport;
 footerExport=function(project){return v21Clean(footerExportBeforeV21(project))};
+
+/* ================================================================== *
+ * v23 — What the preview refuses to draw does not get exported
+ *
+ * Every one of the 153 `c-btn` nodes in the catalogue exported with an empty
+ * `text`, across 77 patterns. The preview does not draw those — `v2RenderButton`
+ * returns nothing for a button with no label — so nobody saw them until they
+ * arrived in WordPress as `<a class="c-btn -primary"><span class="c-btn__txt">`
+ * with nothing inside: a real, clickable, invisible control on the page.
+ *
+ * A button with no label is not a setting the strategist made. It is a slot the
+ * content pass never filled, and the export is the last place to catch it.
+ * ================================================================== */
+
+/** The label a button would render with, from either place the export keeps it. */
+function v23ButtonLabel(node){
+  var attrs=node&&node.attributes||{};
+  return cleanText(attrs.text||node&&node.text||'');
+}
+
+/*
+ * Builder-internal attributes, removed at the boundary.
+ *
+ * `groupTheme` decides which button variant the *preview* draws. WordPress has no
+ * such control — the theme picks the variant from the band's own tone class — so
+ * exporting it produced the one honest "not registered" warning left in the
+ * importer's catalogue sweep.
+ */
+var V23_INTERNAL_ATTRIBUTES={'ds-blocks/c-btn':['groupTheme']};
+
+/**
+ * Drops what WordPress would render as an empty control.
+ *
+ * Returns the node, or null when it should not exist. A button group emptied by
+ * this goes too: it lays out a flex row of nothing and takes a gap with it.
+ */
+/*
+ * How many cards a slider shows, in the words the theme reads.
+ *
+ * `dst-slider.js` takes `visibleItemsDesktop`, `visibleItemsTablet` and
+ * `visibleItemsMobile` out of `dstSliderSettings`. The export sent only
+ * `bleedRightVisibleItems`, so the theme fell back to its own default and an
+ * imported slider showed three cards side by side on a phone — the preview shows
+ * one. Derived from the column counts the band already carries, so the two
+ * cannot drift apart.
+ */
+function v23SliderVisibility(node){
+  if(!node||node.component!=='ds-blocks/c-cards')return;
+  var attrs=node.attributes||{};
+  if(!attrs.enableDstSlider)return;
+  var settings=attrs.dstSliderSettings&&typeof attrs.dstSliderSettings==='object'?attrs.dstSliderSettings:{};
+  var desktop=Math.max(1,Number(attrs.columnsDesktop||attrs.columns||3));
+  var tablet=Math.max(1,Number(attrs.columnsTablet||Math.min(2,desktop)));
+  var mobile=Math.max(1,Number(attrs.columnsMobile||1));
+  var across=Number(settings.bleedRightVisibleItems);
+  if(settings.visibleItemsDesktop==null)settings.visibleItemsDesktop=Math.min(desktop,Number.isFinite(across)&&across>0?across:desktop);
+  if(settings.visibleItemsTablet==null)settings.visibleItemsTablet=tablet;
+  if(settings.visibleItemsMobile==null)settings.visibleItemsMobile=mobile;
+  attrs.dstSliderSettings=settings;
+}
+
+function v23Prune(node){
+  if(!node||typeof node!=='object')return node;
+  v23SliderVisibility(node);
+  var internal=V23_INTERNAL_ATTRIBUTES[node.component];
+  if(internal&&node.attributes){
+    internal.forEach(function(name){delete node.attributes[name]});
+  }
+  if(node.component==='ds-blocks/c-btn'&&!v23ButtonLabel(node))return null;
+  if(Array.isArray(node.children)){
+    node.children=node.children.map(v23Prune).filter(function(child){return child!==null});
+    if(node.component==='ds-blocks/button-group'&&!node.children.length)return null;
+  }
+  return node;
+}
+
+var normalizeExportSectionBeforeV23=normalizeExportSection;
+normalizeExportSection=function(section){
+  return v23Prune(normalizeExportSectionBeforeV23(section));
+};
+
+var headerExportBeforeV23=headerExport;
+headerExport=function(project){return v23Prune(headerExportBeforeV23(project))};
+
+var footerExportBeforeV23=footerExport;
+footerExport=function(project){return v23Prune(footerExportBeforeV23(project))};
 
 /* ================================================================== *
  * v20 — The header and the footer are real block trees
@@ -7463,27 +7714,88 @@ function v18BannerOverlay(section){
 }
 
 /*
- * How opaque a light overlay has to be before the words sit on it.
+ * The value a photograph is assumed to hold where nobody has seen it.
  *
- * A white wash at a tenth is a photograph with a haze over it, and the copy is
- * still on the photograph — dark type there is a guess about a picture nobody
- * has seen. At about half, the wash is the ground. Below the threshold the band
- * keeps its inverted preset and the rendered-legibility pass has the last word.
+ * Mid-grey is the only honest stand-in: it is the one value that makes neither
+ * ink a gamble, so a wash judged against it has to actually carry the copy
+ * rather than borrow the luck of a light or dark picture.
  */
-var V18_LIGHT_OPACITY=.45;
+var V18_PHOTO_GREY=128;
+
+/** One colour stop as channels and alpha, for the values these washes use. */
+function v18StopRgba(stop,project){
+  var raw=String(stop||'').trim();
+  var rgb=raw.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+  if(rgb)return {rgb:[Number(rgb[1]),Number(rgb[2]),Number(rgb[3])],alpha:v2ColorAlpha(raw)};
+  if(/^transparent$/i.test(raw))return {rgb:[V18_PHOTO_GREY,V18_PHOTO_GREY,V18_PHOTO_GREY],alpha:0};
+  var hex=v2SurfaceColor(raw,project);
+  if(!hex)return null;
+  return {rgb:hexRgb(hex),alpha:v2ColorAlpha(raw)};
+}
+
+/*
+ * The ground a wash lays over the picture, taken at its weakest point.
+ *
+ * A gradient is judged where it gives the copy least, not where it gives most:
+ * the words can sit anywhere in the band, so the thinnest part of the wash is
+ * the part that has to hold them.
+ */
+function v18WashGround(overlay,project){
+  var raw=String(overlay.value||'');
+  var stops=/gradient\(/i.test(raw)
+    ? (raw.match(/rgba?\([^)]*\)|#[0-9a-f]{3,8}\b|var\(\s*--[a-z0-9-]+\s*\)|\btransparent\b/ig)||[])
+    : [raw];
+  var fold=Number.isFinite(overlay.opacity)?clamp(overlay.opacity,0,1):1,weakest=null;
+  for(var i=0;i<stops.length;i++){
+    var parsed=v18StopRgba(stops[i],project);
+    if(!parsed)continue;
+    var effective=parsed.alpha*fold;
+    if(!weakest||effective<weakest.alpha)weakest={alpha:effective,rgb:parsed.rgb};
+  }
+  if(!weakest)return null;
+  return weakest.rgb.map(function(channel){
+    return channel*weakest.alpha+V18_PHOTO_GREY*(1-weakest.alpha);
+  });
+}
+
+/** Relative luminance of channels already in 0–255. */
+function v18Luminance(rgb){
+  return rgb.map(function(channel){
+    var value=channel/255;
+    return value<=.03928?value/12.92:Math.pow((value+.055)/1.055,2.4);
+  }).reduce(function(total,value,index){return total+value*[.2126,.7152,.0722][index]},0);
+}
+
+function v18Contrast(a,b){
+  var high=Math.max(v18Luminance(a),v18Luminance(b)),low=Math.min(v18Luminance(a),v18Luminance(b));
+  return (high+.05)/(low+.05);
+}
 
 /**
  * The tone a banner section should carry, or null to leave the preset alone.
  *
  * Returns true for "needs light text", false for "needs dark text".
+ *
+ * This used to be a threshold: a light wash counted as the ground only above .45
+ * opacity, and anything below kept the band's inverted preset while "the
+ * rendered-legibility pass has the last word" — a pass that does not exist. That
+ * left a middle where `sbs-hero-p89-v2`, a 27% white wash over a photograph, kept
+ * its white copy and measured 1.17:1 against the rendered pixels.
+ *
+ * So no threshold. Mix the wash over a mid-grey picture and return whichever ink
+ * reads better on the result. A wash the client weakens in the editor now moves
+ * the copy with it instead of falling into a gap.
  */
 function v18BannerTone(section){
   var overlay=v18BannerOverlay(section);
   if(!overlay)return null;
-  var dark=v2SurfaceTone(overlay.value,state.project);
-  if(dark==null)return null;
-  if(dark)return true;
-  return overlay.opacity>=V18_LIGHT_OPACITY?false:null;
+  var ground=v18WashGround(overlay,state.project);
+  if(!ground){
+    var dark=v2SurfaceTone(overlay.value,state.project);
+    return dark==null?null:!!dark;
+  }
+  var palette=state.project.design&&state.project.design.palette||{};
+  return v18Contrast(ground,[247,245,239])>=v18Contrast(ground,hexRgb(palette.dark||'#111111'));
 }
 
 /*
@@ -7500,9 +7812,19 @@ sectionClasses=function(section){
   if(tone==null)return classes;
   var wanted=tone?'is-style-colors-inverted':'is-style-colors-standard';
   var stripped=classes.split(/\s+/).filter(function(name){
-    return name&&name!=='is-style-colors-inverted'&&name!=='is-style-colors-standard';
+    return name&&name!=='is-style-colors-inverted'&&name!=='is-style-colors-standard'&&name!=='is-pale-overlay';
   });
   stripped.push(wanted);
+  /*
+   * A named class for the pale case, not just the standard tone.
+   *
+   * `is-style-colors-standard` is on *every* band that is not inverted — most of
+   * the page. A rule that paints copy in the palette's dark role has to apply
+   * only where the ground is a pale *wash over a photograph*, because on an
+   * ordinary band the dark role is the band's own background: forcing it produced
+   * 1:1 contrast and the legibility audit caught 78 of them.
+   */
+  if(!tone)stripped.push('is-pale-overlay');
   return stripped.join(' ');
 };
 

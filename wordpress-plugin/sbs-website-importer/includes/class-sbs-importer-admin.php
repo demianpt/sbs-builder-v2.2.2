@@ -12,6 +12,8 @@ final class SBS_Importer_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
 		add_action( 'admin_post_sbs_import_stage', array( $this, 'handle_stage' ) );
 		add_action( 'admin_post_sbs_import_execute', array( $this, 'handle_execute' ) );
+		add_action( 'admin_post_sbs_import_undo', array( $this, 'handle_undo' ) );
+		add_action( 'admin_post_sbs_import_redo', array( $this, 'handle_redo' ) );
 	}
 
 	public function menu(): void {
@@ -62,6 +64,12 @@ final class SBS_Importer_Admin {
 		}
 
 		@set_time_limit( 300 );
+		/*
+		 * Recording starts before the first write and ends after the last, so the
+		 * undo has the whole import in one record rather than a page here and a
+		 * template part there.
+		 */
+		SBS_Importer_History::start( sanitize_text_field( wp_unslash( $_POST['page_title'] ?? '' ) ) ?: __( 'SBS project import', 'sbs-website-importer' ) );
 		$warnings = (array) ( $package['warnings'] ?? array() );
 		if ( ! empty( $_POST['sideload_media'] ) ) {
 			$media = new SBS_Importer_Media();
@@ -129,6 +137,7 @@ final class SBS_Importer_Admin {
 					if ( is_wp_error( $logo_id ) ) {
 						$result['warnings'][] = $logo_id->get_error_message();
 					} elseif ( $logo_id ) {
+						SBS_Importer_History::replacing_option( 'site_logo' );
 						update_option( 'site_logo', (int) $logo_id );
 					}
 				} elseif ( ! get_option( 'site_logo' ) ) {
@@ -161,11 +170,114 @@ final class SBS_Importer_Admin {
 			}
 		}
 		$result['warnings'] = array_values( array_unique( array_filter( $result['warnings'] ) ) );
+		$result['history_id'] = SBS_Importer_History::finish(
+			array(
+				'page'   => (string) ( $result['page_id'] ?? 0 ),
+				'header' => (string) ( $result['header_id'] ?? 0 ),
+				'footer' => (string) ( $result['footer_id'] ?? 0 ),
+			)
+		);
 		SBS_Importer_Stage_Store::delete( $token );
 		$result_token = wp_generate_uuid4();
 		set_transient( 'sbs_import_result_' . get_current_user_id() . '_' . $result_token, $result, 15 * MINUTE_IN_SECONDS );
 		wp_safe_redirect( add_query_arg( array( 'page' => 'sbs-importer', 'result' => $result_token ), admin_url( 'admin.php' ) ) );
 		exit;
+	}
+
+	/** Puts the site back to how it was before one import. */
+	public function handle_undo(): void {
+		$this->authorize( 'sbs_import_undo' );
+		$id = sanitize_text_field( wp_unslash( $_POST['history_id'] ?? '' ) );
+		$outcome = SBS_Importer_History::undo( $id );
+		if ( is_wp_error( $outcome ) ) {
+			$this->redirect_error( $outcome->get_error_message() );
+		}
+		$notice = sprintf(
+			/* translators: 1: number of restored items, 2: number of trashed posts. */
+			__( 'Import undone: %1$d settings and pages restored, %2$d imported posts moved to the trash.', 'sbs-website-importer' ),
+			(int) $outcome['restored'],
+			(int) $outcome['trashed']
+		);
+		foreach ( (array) $outcome['messages'] as $message ) {
+			$notice .= ' ' . $message;
+		}
+		$this->redirect_notice( $notice );
+	}
+
+	/** Re-applies an import that was undone. */
+	public function handle_redo(): void {
+		$this->authorize( 'sbs_import_redo' );
+		$id = sanitize_text_field( wp_unslash( $_POST['history_id'] ?? '' ) );
+		$outcome = SBS_Importer_History::redo( $id );
+		if ( is_wp_error( $outcome ) ) {
+			$this->redirect_error( $outcome->get_error_message() );
+		}
+		$notice = sprintf(
+			/* translators: 1: number of restored items, 2: number of untrashed posts. */
+			__( 'Import re-applied: %1$d settings and pages rewritten, %2$d posts restored from the trash.', 'sbs-website-importer' ),
+			(int) $outcome['restored'],
+			(int) $outcome['untrashed']
+		);
+		foreach ( (array) $outcome['messages'] as $message ) {
+			$notice .= ' ' . $message;
+		}
+		$this->redirect_notice( $notice );
+	}
+
+	private function redirect_notice( string $message ): void {
+		set_transient( 'sbs_import_notice_' . get_current_user_id(), $message, 5 * MINUTE_IN_SECONDS );
+		wp_safe_redirect( add_query_arg( array( 'page' => 'sbs-importer' ), admin_url( 'admin.php' ) ) );
+		exit;
+	}
+
+	/** The import history, with a way back from each entry. */
+	private function render_history(): void {
+		$history = SBS_Importer_History::all();
+		if ( empty( $history ) ) {
+			return;
+		}
+		?>
+		<div class="sbs-history">
+			<h2><?php esc_html_e( 'Import history', 'sbs-website-importer' ); ?></h2>
+			<p class="sbs-history__intro"><?php esc_html_e( 'Undo puts the site back to how it was before that import: pages and template parts it overwrote are restored, and anything it created goes to the trash. Re-apply reverses the undo.', 'sbs-website-importer' ); ?></p>
+			<table class="widefat sbs-history__table">
+				<thead><tr>
+					<th><?php esc_html_e( 'When', 'sbs-website-importer' ); ?></th>
+					<th><?php esc_html_e( 'Import', 'sbs-website-importer' ); ?></th>
+					<th><?php esc_html_e( 'Touched', 'sbs-website-importer' ); ?></th>
+					<th><?php esc_html_e( 'State', 'sbs-website-importer' ); ?></th>
+					<th></th>
+				</tr></thead>
+				<tbody>
+				<?php foreach ( $history as $record ) :
+					$created = count( (array) ( $record['created'] ?? array() ) );
+					$replaced = count( (array) ( $record['replaced'] ?? array() ) );
+					$undone = ! empty( $record['undone'] );
+					?>
+					<tr>
+						<td><?php echo esc_html( (string) ( $record['when'] ?? '' ) ); ?></td>
+						<td><?php echo esc_html( (string) ( $record['label'] ?? '' ) ); ?></td>
+						<td><?php
+							/* translators: 1: created count, 2: overwritten count. */
+							echo esc_html( sprintf( __( '%1$d created, %2$d overwritten', 'sbs-website-importer' ), $created, $replaced ) );
+						?></td>
+						<td><?php echo $undone ? esc_html__( 'Undone', 'sbs-website-importer' ) : esc_html__( 'Applied', 'sbs-website-importer' ); ?></td>
+						<td>
+							<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+								<?php wp_nonce_field( $undone ? 'sbs_import_redo' : 'sbs_import_undo' ); ?>
+								<input type="hidden" name="action" value="<?php echo esc_attr( $undone ? 'sbs_import_redo' : 'sbs_import_undo' ); ?>">
+								<input type="hidden" name="history_id" value="<?php echo esc_attr( (string) ( $record['id'] ?? '' ) ); ?>">
+								<button type="submit" class="button"><?php
+									echo $undone ? esc_html__( 'Re-apply', 'sbs-website-importer' ) : esc_html__( 'Undo this import', 'sbs-website-importer' );
+								?></button>
+							</form>
+						</td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+		</div>
+		<?php
 	}
 
 	public function render(): void {
@@ -184,6 +296,11 @@ final class SBS_Importer_Admin {
 			if ( isset( $_GET['sbs_error'] ) ) {
 				echo '<div class="notice notice-error"><p>' . esc_html( wp_unslash( $_GET['sbs_error'] ) ) . '</p></div>';
 			}
+			$notice = get_transient( 'sbs_import_notice_' . get_current_user_id() );
+			if ( $notice ) {
+				delete_transient( 'sbs_import_notice_' . get_current_user_id() );
+				echo '<div class="notice notice-success"><p>' . esc_html( (string) $notice ) . '</p></div>';
+			}
 			if ( $result_token ) {
 				$this->render_result( $result_token );
 			} elseif ( $stage_token ) {
@@ -191,6 +308,9 @@ final class SBS_Importer_Admin {
 			} else {
 				$this->render_upload();
 			}
+			// Always reachable: a mistaken import has to be undoable from the
+			// landing screen, not only from the screen that reported it.
+			$this->render_history();
 			?>
 		</div>
 		<?php

@@ -13,6 +13,8 @@ final class SBS_Importer_Theme {
 
 	public static function save( array $theme ): array {
 		$css = self::build_css( $theme );
+		SBS_Importer_History::replacing_option( self::OPTION_DATA );
+		SBS_Importer_History::replacing_option( self::OPTION_CSS );
 		update_option( self::OPTION_DATA, $theme, false );
 		update_option( self::OPTION_CSS, $css, false );
 		return array( 'css_bytes' => strlen( $css ), 'variables' => substr_count( $css, '--dst--' ) );
@@ -23,9 +25,54 @@ final class SBS_Importer_Theme {
 		if ( '' === $css ) {
 			return;
 		}
+		self::enqueue_fonts();
 		wp_register_style( 'sbs-imported-theme', false, array(), SBS_IMPORTER_VERSION );
 		wp_enqueue_style( 'sbs-imported-theme' );
 		wp_add_inline_style( 'sbs-imported-theme', $css );
+	}
+
+	/**
+	 * The typefaces the concept was designed in.
+	 *
+	 * `build_css` writes `--dst--font-primary: 'Inter', system-ui, sans-serif` and
+	 * stops there, which names a font without fetching it. The preview loads these
+	 * from Google Fonts, so on the imported page every heading fell back to the
+	 * next family in the stack — the typography looked wrong and nothing in the
+	 * markup said why.
+	 *
+	 * Only families the export marked `google: true` are requested, and each name
+	 * is checked against a conservative pattern before it goes into a URL.
+	 */
+	private static function enqueue_fonts(): void {
+		$theme = get_option( self::OPTION_DATA, array() );
+		$fonts = is_array( $theme ) ? ( $theme['typography']['fonts'] ?? array() ) : array();
+		if ( ! is_array( $fonts ) || empty( $fonts ) ) {
+			return;
+		}
+		$families = array();
+		foreach ( $fonts as $font ) {
+			if ( ! is_array( $font ) || empty( $font['family'] ) || empty( $font['google'] ) ) {
+				continue;
+			}
+			$family = trim( (string) $font['family'] );
+			// Letters, digits, spaces and hyphens: enough for every Google family,
+			// and not enough to smuggle anything into the query string.
+			if ( '' === $family || ! preg_match( '/^[A-Za-z0-9 \-]{1,64}$/', $family ) ) {
+				continue;
+			}
+			$families[ $family ] = true;
+		}
+		if ( empty( $families ) ) {
+			return;
+		}
+		$query = array();
+		foreach ( array_keys( $families ) as $family ) {
+			// The weights the DST tokens actually ask for: body, medium, semibold,
+			// bold, plus italics for emphasis inside copy.
+			$query[] = 'family=' . str_replace( '%20', '+', rawurlencode( $family ) ) . ':ital,wght@0,400;0,500;0,600;0,700;1,400';
+		}
+		$url = 'https://fonts.googleapis.com/css2?' . implode( '&', $query ) . '&display=swap';
+		wp_enqueue_style( 'sbs-imported-fonts', $url, array(), null );
 	}
 
 	public static function build_css( array $theme ): string {
@@ -143,7 +190,24 @@ final class SBS_Importer_Theme {
 			".wp-site-blocks .c-block,.wp-block-post-content .c-block,.editor-styles-wrapper .c-block{box-shadow:var(--sbs-card-shadow,none);border-width:var(--sbs-border-width,0);transition-duration:var(--sbs-motion-duration,0s);transition-timing-function:var(--sbs-motion-ease,ease)}\n" .
 			".wp-site-blocks .ph,.wp-site-blocks .c-block__media,.wp-block-post-content .ph,.wp-block-post-content .c-block__media,.editor-styles-wrapper .ph,.editor-styles-wrapper .c-block__media{border-radius:var(--dst--default-radius,0);overflow:hidden}\n" .
 			".wp-site-blocks .ph img,.wp-site-blocks .c-bg__layer,.wp-block-post-content .ph img,.wp-block-post-content .c-bg__layer,.editor-styles-wrapper .ph img,.editor-styles-wrapper .c-bg__layer{filter:saturate(var(--sbs-media-saturate,1)) contrast(var(--sbs-media-contrast,1));transition:transform var(--sbs-motion-duration,0s) var(--sbs-motion-ease,ease)}\n" .
-			"@media(prefers-reduced-motion:reduce){.wp-site-blocks,.wp-block-post-content,.editor-styles-wrapper{--sbs-motion-duration:0s;--sbs-motion-distance:0px;--sbs-motion-scale:1;--sbs-motion-stagger:0ms;--sbs-hover-lift:0px;--sbs-media-zoom:1}}";
+			"@media(prefers-reduced-motion:reduce){.wp-site-blocks,.wp-block-post-content,.editor-styles-wrapper{--sbs-motion-duration:0s;--sbs-motion-distance:0px;--sbs-motion-scale:1;--sbs-motion-stagger:0ms;--sbs-hover-lift:0px;--sbs-media-zoom:1}}\n" .
+			/*
+			 * The scrim under a card that uses its picture as its background.
+			 *
+			 * The preview draws one — `.c-block__scrim`, a dark gradient — and the
+			 * card's title and copy are painted white to sit on it. The block
+			 * package has no element and no attribute for it: `dst-cards/render.php`
+			 * never reads an overlay, `dst-card-item/render.php` never reads one,
+			 * and `c-block__scrim` appears nowhere in the theme. So an imported
+			 * media-background card put white type straight onto the photograph.
+			 *
+			 * The theme does reserve the layer — `.media-bg .dst-card` declares
+			 * `--zIndex-overlay:1` between the picture at 0 and the body at 2 — so
+			 * this paints into the slot the theme left for it, and nothing else.
+			 */
+			".wp-site-blocks .media-bg .dst-card,.wp-block-post-content .media-bg .dst-card,.editor-styles-wrapper .media-bg .dst-card{position:relative;isolation:isolate}\n" .
+			".wp-site-blocks .media-bg .dst-card::after,.wp-block-post-content .media-bg .dst-card::after,.editor-styles-wrapper .media-bg .dst-card::after{content:\"\";position:absolute;inset:0;z-index:var(--zIndex-overlay,1);pointer-events:none;border-radius:inherit;background:var(--sbs-card-scrim,linear-gradient(180deg,rgba(7,28,42,.02),rgba(7,28,42,.92)))}\n" .
+			".wp-site-blocks .media-bg .dst-card .c-block__body,.wp-block-post-content .media-bg .dst-card .c-block__body,.editor-styles-wrapper .media-bg .dst-card .c-block__body{position:relative;z-index:2}";
 		return ":root{" . $declarations . "}\n.wp-site-blocks{" . $declarations . "}\n.wp-block-post-content{" . $declarations . "}\n.editor-styles-wrapper{" . $declarations . "}\n" . $rules . "\n";
 	}
 

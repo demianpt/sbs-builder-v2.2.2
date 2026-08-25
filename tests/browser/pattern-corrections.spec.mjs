@@ -105,7 +105,9 @@ test.describe('the stats bands that put a picture beside a list', () => {
     const css = await page.evaluate(() => window.__SBS_TEST_API.buildSiteDocument());
     // `align-self:start` is what makes sticky mean anything in a grid: a
     // stretched item is already as tall as the row and has nowhere to travel.
-    expect(css).toContain('.ds-column.is-sticky-media{position:sticky;top:0;align-self:start}');
+    // The offset is a token, so the held column, the timeline counter and the
+    // stacking cards line up with each other instead of each choosing its own.
+    expect(css).toContain('.ds-column.is-sticky-media{position:sticky;top:var(--sbs-sticky-top,12rem);align-self:start}');
     // `overflow:hidden` anywhere above a sticky element silently turns it back
     // into a static one, and both `.has-bg-media` and the decoration layer set it.
     expect(css).toMatch(/\.dst-wrapper:has\(\.is-sticky-media\)[^{]*\{overflow:visible\}/);
@@ -222,4 +224,207 @@ test('a stats band gets figures with units, not instructions', async ({ page }) 
   expect(written.values.join(' ')).toMatch(/km|hrs|routes/i);
   // Said on the band rather than left for somebody to notice.
   expect(written.body).toMatch(/illustrative|demonstration/i);
+});
+
+/**
+ * A pale band paints in the palette's dark role.
+ *
+ * `is-style-colors-standard` resolves to `--dst--base-text-color`, which is the
+ * palette's `ink` — and on a dark-ground concept palette `ink` is a *pale*
+ * colour. Correct against a near-black page, wrong against a white wash. So the
+ * headline, the pretitle, the supporting line and the outlined button all
+ * rendered near-white on white.
+ */
+test.describe('the pale heroes read', () => {
+  /* The concept palette the model actually produced: dark ground, pale ink. */
+  const DARK_GROUND = { bg: '#0D0D0D', ink: '#EAEAEA', accent: '#C22B26', soft: '#1A1A1A', dark: '#212121' };
+  const PALE = ['sbs-hero-p5-v2', 'sbs-hero-p5-v4', 'sbs-hero-p89-v3', 'sbs-hero-p30-v2', 'sbs-hero-p30-v4'];
+  const DARK = ['sbs-hero-p5-v3', 'sbs-hero-p30-v1'];
+
+  /** Renders one hero into the live preview and reads the colours back. */
+  async function hero(page, patternId) {
+    const id = await page.evaluate(({ pid, palette }) => {
+      const api = window.__SBS_TEST_API;
+      api.state.project.design.palette = { ...palette };
+      api.state.project.design.paletteLocked = true;
+      api.state.project.sections.length = 0;
+      const section = api.createSection('hero', 0, pid);
+      api.state.project.sections.push(section);
+      api.paint.queue(section);
+      return section.id;
+    }, { pid: patternId, palette: DARK_GROUND });
+    await page.waitForFunction((sid) => {
+      const frame = document.getElementById('sitePreview');
+      return Boolean(frame && frame.contentDocument && frame.contentDocument.getElementById(sid));
+    }, id);
+    await page.waitForTimeout(400);
+    return page.locator('#sitePreview').evaluate((frame, sid) => {
+      const band = frame.contentDocument.getElementById(sid);
+      const colour = (selector) => {
+        const node = band.querySelector(selector);
+        return node ? getComputedStyle(node).color : null;
+      };
+      const outlined = band.querySelector('.c-btn.-secondary, .c-btn.-secondary-inverted');
+      const filled = band.querySelector('.c-btn.-primary, .c-btn.-primary-inverted');
+      return {
+        pale: /is-pale-overlay/.test(band.className),
+        title: colour('.c-heading__title'),
+        pretitle: colour('.c-heading__pre'),
+        subtitle: colour('.c-heading__sub'),
+        outlined: outlined ? {
+          variant: /-inverted/.test(outlined.className) ? 'inverted' : 'standard',
+          colour: getComputedStyle(outlined).color,
+          border: getComputedStyle(outlined).borderTopColor,
+        } : null,
+        filled: filled ? {
+          variant: /-inverted/.test(filled.className) ? 'inverted' : 'standard',
+          colour: getComputedStyle(filled).color,
+        } : null,
+      };
+    }, id);
+  }
+
+  const luminance = (value) => {
+    const [r, g, b] = (String(value).match(/\d+/g) || ['0', '0', '0']).map(Number);
+    return (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+  };
+  /* #212121 — the palette's dark role, and the one colour guaranteed to read here. */
+  const DARK_INK = luminance('rgb(33, 33, 33)');
+
+  for (const id of PALE) {
+    test(`${id} paints its copy and its outline in the dark role`, async ({ page }) => {
+      await boot(page);
+      const shown = await hero(page, id);
+      expect(shown.pale, 'the band should have resolved to the pale tone').toBe(true);
+      for (const part of ['title', 'pretitle', 'subtitle']) {
+        expect(luminance(shown[part]), `${part} is ${shown[part]}`).toBeCloseTo(DARK_INK, 2);
+      }
+      // An outlined button: dark outline, dark label. And the *variant* follows
+      // the resolved tone — two of these rendered `-secondary-inverted`, a white
+      // outline and a white label, because the variant read the family preset.
+      expect(shown.outlined.variant).toBe('standard');
+      expect(luminance(shown.outlined.colour)).toBeCloseTo(DARK_INK, 2);
+      expect(luminance(shown.outlined.border)).toBeCloseTo(DARK_INK, 2);
+      // A filled button keeps the brand colour; only its label is guaranteed.
+      expect(luminance(shown.filled.colour)).toBeGreaterThan(0.5);
+    });
+  }
+
+  for (const id of DARK) {
+    test(`${id} is untouched, because its wash really is dark`, async ({ page }) => {
+      await boot(page);
+      const shown = await hero(page, id);
+      expect(shown.pale).toBe(false);
+      expect(luminance(shown.title)).toBeGreaterThan(0.5);
+      expect(shown.outlined.variant).toBe('inverted');
+    });
+  }
+
+  test('the outlined button stays readable when the pointer is on it', async ({ page }) => {
+    await boot(page);
+    const id = await page.evaluate(() => {
+      const api = window.__SBS_TEST_API;
+      api.state.project.design.palette = { bg: '#0D0D0D', ink: '#EAEAEA', accent: '#C22B26', soft: '#1A1A1A', dark: '#212121' };
+      api.state.project.design.paletteLocked = true;
+      api.state.project.sections.length = 0;
+      const section = api.createSection('hero', 0, 'sbs-hero-p89-v3');
+      api.state.project.sections.push(section);
+      api.paint.queue(section);
+      return section.id;
+    });
+    await page.waitForFunction((sid) => {
+      const frame = document.getElementById('sitePreview');
+      return Boolean(frame && frame.contentDocument && frame.contentDocument.getElementById(sid));
+    }, id);
+    await page.waitForTimeout(400);
+
+    /*
+     * Measured rather than grepped.
+     *
+     * This used to assert the text of an `!important` rule, which stopped being
+     * true when the band moved to re-pointing the button roles instead of
+     * overruling them — and a rule's text was never the thing that mattered. The
+     * pair of colours the pointer produces is.
+     */
+    const box = await page.locator('#sitePreview').evaluate((frame, sid) => {
+      const band = frame.contentDocument.getElementById(sid);
+      const button = band.querySelector('.c-btn.-secondary, .c-btn.-secondary-inverted');
+      if (!button) return null;
+      const rect = button.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }, id);
+    expect(box, 'the hero has no outlined button').toBeTruthy();
+
+    const frame = await page.locator('#sitePreview').boundingBox();
+    const scale = await page.locator('#sitePreview').evaluate((el) => ({
+      x: el.getBoundingClientRect().width / el.contentWindow.innerWidth,
+      y: el.getBoundingClientRect().height / el.contentWindow.innerHeight,
+    }));
+    await page.mouse.move(frame.x + box.x * scale.x, frame.y + box.y * scale.y);
+    await page.waitForTimeout(320);
+
+    const hovered = await page.locator('#sitePreview').evaluate((el, sid) => {
+      const band = el.contentDocument.getElementById(sid);
+      const button = band.querySelector('.c-btn.-secondary, .c-btn.-secondary-inverted');
+      const style = getComputedStyle(button);
+      return { colour: style.color, background: style.backgroundColor };
+    }, id);
+
+    const channels = (value) => (String(value).match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+    const luminanceOf = (value) => channels(value)
+      .map((channel) => { const v = channel / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 })
+      .reduce((total, v, i) => total + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const label = luminanceOf(hovered.colour);
+    const fill = luminanceOf(hovered.background);
+    const ratio = (Math.max(label, fill) + 0.05) / (Math.min(label, fill) + 0.05);
+    expect(ratio, `label ${hovered.colour} on fill ${hovered.background}`).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+test.describe('what holds still while the page scrolls', () => {
+  test('every sticky element uses the same offset, clear of the header', async ({ page }) => {
+    await boot(page);
+    const css = await page.evaluate(() => window.__SBS_TEST_API.buildSiteDocument());
+    // `top:0` pinned a held column *under* the sticky header, which covered the
+    // top of whatever was holding.
+    expect(css).toContain('--sbs-sticky-top:12rem');
+    for (const marker of ['is-sticky-media', 'is-sticky-heading']) {
+      const rule = css.match(new RegExp(`\\.ds-column\\.${marker}\\{[^}]+}`));
+      expect(rule, `no rule for ${marker}`).toBeTruthy();
+      expect(rule[0]).toContain('top:var(--sbs-sticky-top,12rem)');
+      expect(rule[0]).not.toContain('top:0');
+    }
+    // A sticky element resolves its offsets against the nearest positioned
+    // ancestor; without one it pins to the viewport and leaves its own band.
+    expect(css).toMatch(/\.ds-row:has\(\.is-sticky-heading\)\{position:relative/);
+    expect(css).toMatch(/\.ds-row:has\(\.is-sticky-media\)\{position:relative/);
+  });
+
+  test('the timeline holds its heading beside the entries', async ({ page }) => {
+    await boot(page);
+    const column = await render(page, 'sbs-timeline-p1-v2', (band) => {
+      const sticky = band.querySelector('.ds-column.is-sticky-heading');
+      return {
+        found: Boolean(sticky),
+        holdsHeading: Boolean(sticky && sticky.querySelector('.c-heading')),
+        others: band.querySelectorAll('.ds-column').length,
+      };
+    });
+    expect(column.found, 'the heading column is not marked to hold').toBe(true);
+    expect(column.holdsHeading).toBe(true);
+    expect(column.others).toBeGreaterThan(1);
+  });
+
+  test('a timeline entry stacks, with room under it', async ({ page }) => {
+    await boot(page);
+    // Row was the default, which put the counter beside the title and squeezed
+    // the copy into whatever was left.
+    const shown = await page.evaluate(() => {
+      const css = window.__SBS_TEST_API.buildSiteDocument();
+      const rule = css.match(/\.list-timeline \.dst-list__content\{[^}]+}/);
+      return rule ? rule[0] : '';
+    });
+    expect(shown).toContain('flex-direction:column');
+    expect(shown).toContain('margin-bottom:2rem');
+  });
 });

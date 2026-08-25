@@ -109,6 +109,13 @@ final class SBS_Importer_Media {
 			return $id;
 		}
 		update_post_meta( $id, '_sbs_source_url', $url );
+		/*
+		 * Recorded so an undo takes the pictures with it. Reused attachments — the
+		 * branch above, matched on `_sbs_source_url` — are deliberately not
+		 * recorded: this import did not create them and another page may be using
+		 * them, so trashing them on undo would break a page nobody touched.
+		 */
+		SBS_Importer_History::created_post( (int) $id, 'attachment' );
 		if ( '' !== $alt ) {
 			update_post_meta( $id, '_wp_attachment_image_alt', sanitize_text_field( $alt ) );
 		}

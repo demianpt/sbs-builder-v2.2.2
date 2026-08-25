@@ -2380,7 +2380,8 @@
               "backgroundImage": [],
               "backgroundOverlay": "var(--dst--secondary-color1)",
               "backgroundOverlayOpacity": 0.65,
-              "borderRadius": "default"
+              "borderRadius": "default",
+              "backgroundOverlayEnabled": true
             },
             "children": [
               {
@@ -2573,8 +2574,8 @@
               "verticalAlign": "center",
               "backgroundImage": [],
               "backgroundOverlayEnabled": true,
-              "backgroundOverlay": "#3333336e",
-              "backgroundOverlayOpacity": 0.65,
+              "backgroundOverlay": "rgb(51,51,51)",
+              "backgroundOverlayOpacity": 0.741,
               "borderRadius": "default"
             },
             "children": [
@@ -3711,7 +3712,6 @@
                       "showPretitle": true,
                       "showSubtitle": true,
                       "showDescription": true,
-                      "showText": true,
                       "pretitleTypography": {
                         "preset": "default",
                         "fontFamily": "var(--dst--pretitle-ff)",
@@ -4748,8 +4748,7 @@
               "pretitle": "SBS Contact p28 v2",
               "title": "<strong>The quick brown fox jumps over the lazy dog.</strong>",
               "showPretitle": true,
-              "showDescription": true,
-              "showText": true
+              "showDescription": true
             },
             "children": [
               {
@@ -6906,8 +6905,9 @@
           "backgroundImage": [],
           "contentWidth": "44%",
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "linear-gradient( \tto right, \t#000000 0%, \ttransparent 100% );",
-          "classVariant": "cta-break"
+          "backgroundOverlay": "linear-gradient( \tto right, \trgba(0,0,0,1) 0%, \trgba(20,20,22,0.64) 100% );",
+          "classVariant": "cta-break",
+          "backgroundOverlayOpacity": 1
         },
         "children": [
           {
@@ -7172,8 +7172,6 @@
                       "title": "Commercial cleaning services for Bay Area businesses",
                       "showPretitle": true,
                       "showDescription": true,
-                      "showButtons": true,
-                      "showText": true,
                       "headingTheme": "inverted",
                       "pretitleTypography": {
                         "preset": "default",
@@ -8974,7 +8972,7 @@
           },
           "backgroundImage": [],
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "#33333354",
+          "backgroundOverlay": "rgb(51,51,51)",
           "style": {
             "elements": {
               "link": {
@@ -8984,7 +8982,8 @@
               }
             }
           },
-          "textColor": "secondary1"
+          "textColor": "secondary1",
+          "backgroundOverlayOpacity": 0.759
         },
         "children": [
           {
@@ -10067,8 +10066,9 @@
                       "contentWidth": "100%",
                       "innerVerticalAlign": "bottom",
                       "backgroundOverlayEnabled": true,
-                      "backgroundOverlay": "linear-gradient(180deg,rgba(255,255,255,0) 0%,rgb(8,0,13) 78%)",
-                      "borderRadius": "default"
+                      "backgroundOverlay": "linear-gradient(180deg,rgba(20,20,22,0.64) 0%,rgba(8,0,13,1) 78%)",
+                      "borderRadius": "default",
+                      "backgroundOverlayOpacity": 1
                     },
                     "children": [
                       {
@@ -10912,7 +10912,9 @@
             }
           },
           "backgroundImage": [],
-          "backgroundOverlay": "var(--dst--primary-color1)"
+          "backgroundOverlay": "var(--dst--primary-color1)",
+          "backgroundOverlayOpacity": 1,
+          "backgroundOverlayEnabled": true
         },
         "children": [
           {
@@ -11248,8 +11250,9 @@
           },
           "backgroundImage": [],
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "#3333336b",
-          "textColor": "secondary1"
+          "backgroundOverlay": "rgb(51,51,51)",
+          "textColor": "secondary1",
+          "backgroundOverlayOpacity": 0.791
         },
         "children": [
           {
@@ -11430,8 +11433,8 @@
           "bannerHeight": "full",
           "contentWidth": "100%",
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "#333333b0",
-          "backgroundOverlayOpacity": 0.65,
+          "backgroundOverlay": "rgb(51,51,51)",
+          "backgroundOverlayOpacity": 0.802,
           "showScrollDown": true,
           "classVariant": "home-hero"
         },
@@ -11519,7 +11522,8 @@
                         "attributes": {
                           "text": "Primary Button",
                           "hasIcon": false,
-                          "iconPosition": "row-reverse"
+                          "iconPosition": "row-reverse",
+                          "groupTheme": "standard"
                         },
                         "children": [],
                         "layout": {
@@ -11535,7 +11539,8 @@
                           "text": "Primary Button",
                           "btnType": "secondary",
                           "hasIcon": false,
-                          "iconPosition": "row-reverse"
+                          "iconPosition": "row-reverse",
+                          "groupTheme": "standard"
                         },
                         "children": [],
                         "layout": {
@@ -11629,8 +11634,8 @@
           "bannerHeight": "full",
           "contentWidth": "100%",
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "linear-gradient(   to right,   #333 0%,   #333 63%,   transparent 100% );",
-          "backgroundOverlayOpacity": 0.65,
+          "backgroundOverlay": "linear-gradient(   to right,   rgba(51,51,51,0.874) 0%,   rgba(51,51,51,0.874) 63%,   rgba(20,20,22,0.64) 100% );",
+          "backgroundOverlayOpacity": 1,
           "showScrollDown": true,
           "scrollDownPosition": "sd-left",
           "classVariant": "home-hero"
@@ -11831,8 +11836,8 @@
           "contentWidth": "100%",
           "horizontalAlign": "center",
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "rgba(0,0,0,0.5)",
-          "backgroundOverlayOpacity": 0.65,
+          "backgroundOverlay": "rgb(0,0,0)",
+          "backgroundOverlayOpacity": 0.757,
           "showScrollDown": true,
           "classVariant": "home-hero"
         },
@@ -12116,7 +12121,7 @@
           "horizontalAlign": "center",
           "innerVerticalAlign": "bottom",
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "linear-gradient(180deg,rgba(255,255,255,0) 0%,rgb(0,0,0) 84%)",
+          "backgroundOverlay": "linear-gradient(180deg,rgba(20,20,22,0.64) 0%,rgba(0,0,0,1) 84%)",
           "backgroundOverlayOpacity": 1,
           "showScrollDown": true,
           "classVariant": "home-hero"
@@ -12146,7 +12151,6 @@
               "showPretitle": true,
               "showSubtitle": true,
               "showDescription": true,
-              "showButtons": true,
               "headingTheme": "inverted",
               "pretitleTypography": {
                 "preset": "default",
@@ -12341,7 +12345,6 @@
               "showPretitle": true,
               "showSubtitle": true,
               "showDescription": true,
-              "showButtons": true,
               "headingTheme": "inverted",
               "pretitleTypography": {
                 "preset": "default",
@@ -12507,7 +12510,8 @@
           "backgroundOverlayEnabled": true,
           "backgroundOverlay": "var(--dst--secondary-color1)",
           "showScrollDown": true,
-          "classVariant": "home-hero"
+          "classVariant": "home-hero",
+          "backgroundOverlayOpacity": 1
         },
         "children": [
           {
@@ -12709,7 +12713,7 @@
           "bannerHeight": "full",
           "innerVerticalAlign": "bottom",
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "linear-gradient(260deg,rgba(255,255,255,0) 0%,rgb(0,0,0) 84%)",
+          "backgroundOverlay": "linear-gradient(260deg,rgba(20,20,22,0.64) 0%,rgba(0,0,0,1) 84%)",
           "backgroundOverlayOpacity": 1,
           "showScrollDown": true,
           "classVariant": "home-hero"
@@ -12737,7 +12741,6 @@
               "showPretitle": true,
               "showSubtitle": true,
               "showDescription": true,
-              "showButtons": true,
               "headingTheme": "inverted",
               "pretitleTypography": {
                 "preset": "default",
@@ -12918,7 +12921,7 @@
           "bannerHeight": "full",
           "innerVerticalAlign": "bottom",
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "linear-gradient(260deg,rgba(255,255,255,0) 0%,rgb(254,254,254) 84%)",
+          "backgroundOverlay": "linear-gradient(260deg,rgba(255,255,255,0.58) 0%,rgba(254,254,254,1) 84%)",
           "backgroundOverlayOpacity": 1,
           "showScrollDown": true,
           "classVariant": "home-hero"
@@ -13130,13 +13133,14 @@
           "contentWidth": "80%",
           "horizontalAlign": "center",
           "innerVerticalAlign": "bottom",
-          "backgroundOverlay": "#240800",
-          "backgroundOverlayOpacity": 0.6,
+          "backgroundOverlay": "rgb(36,8,0)",
+          "backgroundOverlayOpacity": 0.856,
           "considerHeaderHeight": true,
           "borderRadius": "custom",
           "borderRadiusCustom": "2rem",
           "borderRadiusCustomMobile": "0rem",
-          "classVariant": "home-hero"
+          "classVariant": "home-hero",
+          "backgroundOverlayEnabled": true
         },
         "children": [
           {
@@ -13358,7 +13362,7 @@
           "innerVerticalAlign": "bottom",
           "backgroundOverlayEnabled": true,
           "backgroundOverlay": "var(--dst--secondary-color1)",
-          "backgroundOverlayOpacity": 0.27,
+          "backgroundOverlayOpacity": 0.693,
           "considerHeaderHeight": true,
           "borderRadius": "custom",
           "borderRadiusCustom": "2rem",
@@ -13578,7 +13582,7 @@
           "backgroundImage": [],
           "bannerHeight": "full",
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "linear-gradient(   to right,   #ffffff 0%,   #ffffff 60%,   transparent 100% );",
+          "backgroundOverlay": "linear-gradient(   to right,   rgba(255,255,255,1) 0%,   rgba(255,255,255,1) 60%,   rgba(255,255,255,0.58) 100% );",
           "backgroundOverlayOpacity": 1,
           "showScrollDown": true,
           "scrollDownPosition": "sd-left",
@@ -13607,7 +13611,6 @@
               "showPretitle": true,
               "showSubtitle": true,
               "showDescription": true,
-              "showButtons": true,
               "pretitleTypography": {
                 "preset": "default",
                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -13808,7 +13811,6 @@
               "showPretitle": true,
               "showSubtitle": true,
               "showDescription": true,
-              "showButtons": true,
               "pretitleTypography": {
                 "preset": "default",
                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -15844,7 +15846,6 @@
               "title": "<strong>The quick brown fox jumps over the lazy dog.</strong>",
               "showPretitle": true,
               "showDescription": true,
-              "showText": true,
               "headingLayoutVariant": "dst-heading-v2",
               "headingColumnsRatio": "40%",
               "headingColumnsGap": "5rem"
@@ -17516,7 +17517,9 @@
             }
           },
           "backgroundImage": [],
-          "backgroundOverlay": "#0000001c"
+          "backgroundOverlay": "rgb(0,0,0)",
+          "backgroundOverlayOpacity": 0.68,
+          "backgroundOverlayEnabled": true
         },
         "children": [
           {
@@ -21569,7 +21572,9 @@
             }
           },
           "backgroundImage": [],
-          "backgroundOverlay": "var(--dst--secondary-color1)"
+          "backgroundOverlay": "var(--dst--secondary-color1)",
+          "backgroundOverlayOpacity": 1,
+          "backgroundOverlayEnabled": true
         },
         "children": [
           {
@@ -26630,7 +26635,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -26884,7 +26888,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -27138,7 +27141,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -27615,7 +27617,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -27869,7 +27870,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -28123,7 +28123,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -28583,7 +28582,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -28837,7 +28835,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -29091,7 +29088,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -29533,7 +29529,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -29787,7 +29782,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -30041,7 +30035,6 @@
                               "showPretitle": true,
                               "showSubtitle": true,
                               "showDescription": true,
-                              "showButtons": true,
                               "pretitleTypography": {
                                 "preset": "default",
                                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -30772,10 +30765,8 @@
               },
               "pretitle": "Layout 518",
               "title": "Simple Title",
-              "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur cursus nunc in sollicitudin interdum. Vivamus sollicitudin congue massa, ac condimentum justo gravida in. Curabitur sit amet aliquet velit. ",
               "showPretitle": true,
               "showDescription": true,
-              "showText": true,
               "pretitleTypography": {
                 "preset": "default",
                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -30831,6 +30822,15 @@
                 "layout": {
                   "container": "default"
                 }
+              },
+              {
+                "id": "sbs-layout-p518-v2-b2-description",
+                "component": "ds-blocks/simple-text",
+                "usage": "copy",
+                "confidence": "confirmed",
+                "attributes": {},
+                "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur cursus nunc in sollicitudin interdum. Vivamus sollicitudin congue massa, ac condimentum justo gravida in. Curabitur sit amet aliquet velit.",
+                "children": []
               }
             ],
             "layout": {
@@ -31139,10 +31139,8 @@
               },
               "pretitle": "SBS Layout p518 v3",
               "title": "Simple Title",
-              "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur cursus nunc in sollicitudin interdum. Vivamus sollicitudin congue massa, ac condimentum justo gravida in. Curabitur sit amet aliquet velit. ",
               "showPretitle": true,
               "showDescription": true,
-              "showText": true,
               "pretitleTypography": {
                 "preset": "default",
                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -31198,6 +31196,15 @@
                 "layout": {
                   "container": "default"
                 }
+              },
+              {
+                "id": "sbs-layout-p518-v3-b2-description",
+                "component": "ds-blocks/simple-text",
+                "usage": "copy",
+                "confidence": "confirmed",
+                "attributes": {},
+                "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur cursus nunc in sollicitudin interdum. Vivamus sollicitudin congue massa, ac condimentum justo gravida in. Curabitur sit amet aliquet velit.",
+                "children": []
               }
             ],
             "layout": {
@@ -31843,11 +31850,8 @@
                       "dsContainerSideGap": false,
                       "pretitle": "Layout p521 v2",
                       "title": "Why Filing Early Matters",
-                      "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur cursus nunc in sollicitudin interdum. Vivamus sollicitudin congue massa, ac condimentum justo gravida in. Curabitur sit amet aliquet velit. ",
                       "showPretitle": true,
                       "showDescription": true,
-                      "showButtons": true,
-                      "showText": true,
                       "pretitleTypography": {
                         "preset": "default",
                         "fontFamily": "var(--dst--pretitle-ff)",
@@ -31929,6 +31933,15 @@
                         "layout": {
                           "container": "default"
                         }
+                      },
+                      {
+                        "id": "sbs-layout-p521-v2-b4-description",
+                        "component": "ds-blocks/simple-text",
+                        "usage": "copy",
+                        "confidence": "confirmed",
+                        "attributes": {},
+                        "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur cursus nunc in sollicitudin interdum. Vivamus sollicitudin congue massa, ac condimentum justo gravida in. Curabitur sit amet aliquet velit.",
+                        "children": []
                       }
                     ],
                     "layout": {
@@ -34383,7 +34396,9 @@
             "usage": "banner-slider",
             "confidence": "confirmed",
             "attributes": {
-              "lightSliderSettings": {
+              "contentWidth": "46%",
+              "innerVerticalAlign": "bottom",
+              "dstSliderSettings": {
                 "showArrows": false,
                 "showThumbnails": true,
                 "thumbnailsShowImage": false,
@@ -34391,9 +34406,7 @@
                 "thumbnailsShowTitle": true,
                 "thumbnailsColumns": 4,
                 "thumbnailsFullWidth": true
-              },
-              "contentWidth": "46%",
-              "innerVerticalAlign": "bottom"
+              }
             },
             "children": [
               {
@@ -34427,7 +34440,6 @@
                       "title": "Your Partner in Real Estate Financing",
                       "showPretitle": true,
                       "showDescription": true,
-                      "showText": true,
                       "titleTypography": {
                         "fontFamily": "var(--dst--h4-ff)",
                         "fontSize": "var(--dst--h4-fs)",
@@ -34508,7 +34520,6 @@
                       "title": "Your Partner in Real Estate Financing",
                       "showPretitle": true,
                       "showDescription": true,
-                      "showText": true,
                       "titleTypography": {
                         "fontFamily": "var(--dst--h4-ff)",
                         "fontSize": "var(--dst--h4-fs)",
@@ -34589,7 +34600,6 @@
                       "title": "Your Partner in Real Estate Financing",
                       "showPretitle": true,
                       "showDescription": true,
-                      "showText": true,
                       "titleTypography": {
                         "fontFamily": "var(--dst--h4-ff)",
                         "fontSize": "var(--dst--h4-fs)",
@@ -34764,8 +34774,6 @@
                       "title": "The quick brown fox jumps over the lazy dog.",
                       "showPretitle": true,
                       "showDescription": true,
-                      "showButtons": true,
-                      "showText": true,
                       "headingTheme": "inverted",
                       "pretitleTypography": {
                         "preset": "default",
@@ -35216,7 +35224,6 @@
                       "title": "<strong>The quick brown fox jumps over the lazy dog.</strong>",
                       "showPretitle": true,
                       "showDescription": true,
-                      "showText": true,
                       "titleTypography": {
                         "preset": "h3-style",
                         "tag": "h3",
@@ -35384,7 +35391,6 @@
                       "title": "<strong>The quick brown fox jumps over the lazy dog.</strong>",
                       "showPretitle": true,
                       "showDescription": true,
-                      "showText": true,
                       "titleTypography": {
                         "preset": "h3-style",
                         "tag": "h3",
@@ -35536,7 +35542,7 @@
           },
           "backgroundImage": [],
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "linear-gradient(   to right,   #050519 0%,   #050519 20%,   transparent 100% );",
+          "backgroundOverlay": "linear-gradient(   to right,   rgba(5,5,25,1) 0%,   rgba(5,5,25,1) 20%,   rgba(20,20,22,0.64) 100% );",
           "backgroundOverlayOpacity": 1
         },
         "children": [
@@ -35564,7 +35570,6 @@
               "showPretitle": true,
               "showSubtitle": true,
               "showDescription": true,
-              "showButtons": true,
               "headingTheme": "inverted",
               "pretitleTypography": {
                 "preset": "default",
@@ -35673,7 +35678,6 @@
                       "title": "<strong>The quick brown fox jumps over the lazy dog.</strong>",
                       "showPretitle": true,
                       "showDescription": true,
-                      "showText": true,
                       "headingTheme": "inverted",
                       "pretitleTypography": {
                         "preset": "default",
@@ -35746,7 +35750,6 @@
                       "title": "<strong>The quick brown fox jumps over the lazy dog.</strong>",
                       "showPretitle": true,
                       "showDescription": true,
-                      "showText": true,
                       "headingTheme": "inverted",
                       "pretitleTypography": {
                         "preset": "default",
@@ -36106,7 +36109,7 @@
                   "contentWidth": "100%",
                   "innerVerticalAlign": "top",
                   "backgroundOverlayEnabled": true,
-                  "backgroundOverlay": "linear-gradient(0deg, rgba(1, 7, 19, 0.80) 0%, rgba(1, 7, 19, 0.72) 50%, rgba(0, 33, 71, 0.00) 100%)",
+                  "backgroundOverlay": "linear-gradient(0deg, rgba(1,7,19,0.928) 0%, rgba(1,7,19,0.899) 50%, rgba(20,20,22,0.64) 100%)",
                   "backgroundOverlayOpacity": 1,
                   "borderRadius": "default"
                 },
@@ -49952,11 +49955,9 @@
                   "pretitle": "SBS Slider p1 v2",
                   "title": "The quick brown fox jumps over the lazy dog.",
                   "subtitle": "Subtitle Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur eget pulvinar lorem. ",
-                  "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur cursus nunc in sollicitudin interdum. Vivamus sollicitudin congue massa, ac condimentum justo gravida in. Curabitur sit amet aliquet velit. ",
                   "showPretitle": true,
                   "showSubtitle": true,
                   "showDescription": true,
-                  "showButtons": true,
                   "pretitleTypography": {
                     "preset": "default",
                     "fontFamily": "var(--dst--pretitle-ff)",
@@ -50027,6 +50028,15 @@
                       },
                       "container": "default"
                     }
+                  },
+                  {
+                    "id": "sbs-slider-p22-v2-1-b3-description",
+                    "component": "ds-blocks/simple-text",
+                    "usage": "copy",
+                    "confidence": "confirmed",
+                    "attributes": {},
+                    "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur cursus nunc in sollicitudin interdum. Vivamus sollicitudin congue massa, ac condimentum justo gravida in. Curabitur sit amet aliquet velit.",
+                    "children": []
                   }
                 ],
                 "layout": {
@@ -50094,13 +50104,6 @@
                   "mediaBorderRadius": "default",
                   "mediaAsBg": true,
                   "mediaBgVAlign": "bottom",
-                  "enableLightSlider": true,
-                  "lightSliderSettings": {
-                    "showProgress": true,
-                    "bleedRight": true,
-                    "bleedRightVisibleItems": 3.3,
-                    "arrowsPosition": "bottom"
-                  },
                   "postType": {
                     "post": {
                       "image_show": true,
@@ -50121,7 +50124,14 @@
                   },
                   "columnsDesktop": 3,
                   "columnsTablet": 2,
-                  "columnsMobile": 1
+                  "columnsMobile": 1,
+                  "enableDstSlider": true,
+                  "dstSliderSettings": {
+                    "showProgress": true,
+                    "bleedRight": true,
+                    "bleedRightVisibleItems": 3,
+                    "arrowsPosition": "bottom"
+                  }
                 },
                 "children": [
                   {
@@ -52072,7 +52082,6 @@
               "title": "Simple Title",
               "showPretitle": true,
               "showDescription": true,
-              "showText": true,
               "pretitleTypography": {
                 "preset": "default",
                 "fontFamily": "var(--dst--pretitle-ff)",
@@ -56054,7 +56063,6 @@
                   "showPretitle": true,
                   "showSubtitle": true,
                   "showDescription": true,
-                  "showButtons": true,
                   "pretitleTypography": {
                     "preset": "default",
                     "fontFamily": "var(--dst--pretitle-ff)",
@@ -56109,8 +56117,8 @@
                         "confidence": "confirmed",
                         "attributes": {
                           "text": "Primary Button",
-                          "btnVariant": "alternative",
-                          "iconValue": "lib-icon-arrow1"
+                          "iconValue": "lib-icon-arrow1",
+                          "btnType": "alternative"
                         },
                         "children": [],
                         "layout": {
@@ -56125,7 +56133,6 @@
                         "attributes": {
                           "text": "Primary Button",
                           "btnType": "secondary",
-                          "btnVariant": "alternative",
                           "iconValue": "lib-icon-arrow1"
                         },
                         "children": [],
@@ -58155,7 +58162,7 @@
           },
           "backgroundImage": [],
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "linear-gradient(   45deg,   #000 0%,   transparent 100% );",
+          "backgroundOverlay": "linear-gradient(   45deg,   rgba(0,0,0,1) 0%,   rgba(20,20,22,0.64) 100% );",
           "backgroundOverlayOpacity": 1
         },
         "children": [
@@ -59462,7 +59469,8 @@
                       "type": "sticky",
                       "top": "0px"
                     }
-                  }
+                  },
+                  "class": "is-sticky-heading"
                 },
                 "children": [
                   {
@@ -61759,7 +61767,6 @@
                   "showPretitle": true,
                   "showSubtitle": true,
                   "showDescription": true,
-                  "showButtons": true,
                   "pretitleTypography": {
                     "preset": "default",
                     "fontFamily": "var(--dst--pretitle-ff)",
@@ -63277,7 +63284,9 @@
           "horizontalAlign": "center",
           "backgroundOverlay": "var(--dst--primary-color3)",
           "showScrollDown": true,
-          "classVariant": "home-hero"
+          "classVariant": "home-hero",
+          "backgroundOverlayOpacity": 1,
+          "backgroundOverlayEnabled": true
         },
         "children": [
           {
@@ -63471,7 +63480,7 @@
           "horizontalAlign": "center",
           "innerVerticalAlign": "bottom",
           "backgroundOverlayEnabled": true,
-          "backgroundOverlay": "linear-gradient(180deg,rgba(255,255,255,0.5) 32%,rgb(254,254,254) 82%)",
+          "backgroundOverlay": "linear-gradient(180deg,rgba(255,255,255,0.79) 32%,rgba(254,254,254,1) 82%)",
           "backgroundOverlayOpacity": 1,
           "showScrollDown": true,
           "classVariant": "home-hero"

@@ -3,7 +3,7 @@ Contributors: digitalsilk
 Tags: gutenberg, blocks, site-editor, template-parts, importer
 Requires at least: 6.4
 Requires PHP: 8.0
-Stable tag: 1.0.1
+Stable tag: 3.0.0
 License: GPLv2 or later
 
 Import SBS Page Builder projects as native Digital Silk Gutenberg blocks, pages, and Header/Footer template parts.

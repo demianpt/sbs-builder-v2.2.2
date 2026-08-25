@@ -17,9 +17,14 @@ final class SBS_Importer_Services {
 				return new WP_Error( 'sbs_page_target', __( 'The selected destination page is not available.', 'sbs-website-importer' ) );
 			}
 			$new_content = 'append' === $mode && trim( $post->post_content ) ? $post->post_content . "\n\n" . $content : $content;
+			// Snapshot first: after the write the previous page is unrecoverable.
+			SBS_Importer_History::replacing_post( $page_id );
 			$result = wp_update_post( array( 'ID' => $page_id, 'post_content' => wp_slash( $new_content ), 'post_title' => $title ?: $post->post_title ), true );
 		} else {
 			$result = wp_insert_post( array( 'post_type' => 'page', 'post_status' => $status, 'post_title' => $title, 'post_name' => sanitize_title( $page['slug'] ?? $title ), 'post_content' => wp_slash( $content ) ), true );
+			if ( ! is_wp_error( $result ) ) {
+				SBS_Importer_History::created_post( (int) $result, 'page' );
+			}
 		}
 		if ( is_wp_error( $result ) ) {
 			return $result;
@@ -95,6 +100,9 @@ final class SBS_Importer_Services {
 			}
 		} else {
 			$menu_id = wp_create_nav_menu( $title );
+			if ( ! is_wp_error( $menu_id ) ) {
+				SBS_Importer_History::created_menu( (int) $menu_id, $title );
+			}
 			if ( is_wp_error( $menu_id ) ) {
 				return $menu_id;
 			}
@@ -143,6 +151,7 @@ final class SBS_Importer_Services {
 			}
 			$current[ $location ] = (int) $menu_id;
 		}
+		SBS_Importer_History::replacing_theme_mod( 'nav_menu_locations' );
 		set_theme_mod( 'nav_menu_locations', $current );
 	}
 
@@ -159,6 +168,9 @@ final class SBS_Importer_Services {
 			}
 		} else {
 			$menu_id = wp_create_nav_menu( $title );
+			if ( ! is_wp_error( $menu_id ) ) {
+				SBS_Importer_History::created_menu( (int) $menu_id, $title );
+			}
 			if ( is_wp_error( $menu_id ) ) {
 				return $menu_id;
 			}
@@ -205,9 +217,14 @@ final class SBS_Importer_Services {
 		$postarr = array( 'post_type' => 'wp_template_part', 'post_status' => 'publish', 'post_name' => $slug, 'post_title' => sanitize_text_field( $title ), 'post_content' => wp_slash( $content ) );
 		if ( $existing ) {
 			$postarr['ID'] = (int) $existing[0];
+			// The header a site already had is the thing an undo most needs back.
+			SBS_Importer_History::replacing_post( (int) $existing[0] );
 			$id = wp_update_post( $postarr, true );
 		} else {
 			$id = wp_insert_post( $postarr, true );
+			if ( ! is_wp_error( $id ) ) {
+				SBS_Importer_History::created_post( (int) $id, 'template_part' );
+			}
 		}
 		if ( is_wp_error( $id ) ) {
 			return $id;

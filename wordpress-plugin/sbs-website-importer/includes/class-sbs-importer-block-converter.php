@@ -4,6 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class SBS_Importer_Block_Converter {
+	private ?SBS_Importer_Block_Contract $contract = null;
 	private array $warnings = array();
 	private array $components = array();
 	private int $block_count = 0;
@@ -55,6 +56,32 @@ final class SBS_Importer_Block_Converter {
 		return $this->finish( $block ? array( $block ) : array() );
 	}
 
+	/**
+	 * Keys that belong to the builder and mean nothing here.
+	 *
+	 * `groupTheme` tells the *preview* which button variant to draw. WordPress
+	 * picks the variant from the band's own tone class, so carrying the key across
+	 * only produces a warning about an attribute nobody will ever read. The export
+	 * strips it as well; this is the second line, for a JSON written by an older
+	 * build of the builder.
+	 *
+	 * @param array<string,mixed> $attrs
+	 * @return array<string,mixed>
+	 */
+	private function strip_builder_internals( string $name, array $attrs ): array {
+		$internal = array(
+			'ds-blocks/c-btn' => array( 'groupTheme' ),
+		);
+		foreach ( $internal[ $name ] ?? array() as $key ) {
+			unset( $attrs[ $key ] );
+		}
+		return $attrs;
+	}
+
+	private function contract(): SBS_Importer_Block_Contract {
+		return $this->contract ??= new SBS_Importer_Block_Contract();
+	}
+
 	private function reset(): void {
 		$this->warnings = array();
 		$this->components = array();
@@ -85,6 +112,7 @@ final class SBS_Importer_Block_Converter {
 		$this->components[] = $name;
 
 		$attrs = isset( $node['attributes'] ) && is_array( $node['attributes'] ) ? $this->sanitize_value( $node['attributes'] ) : array();
+		$attrs = $this->strip_builder_internals( $name, $attrs );
 		$attrs = $this->merge_node_metadata( $name, $attrs, $node, $context );
 		if ( 'ds-blocks/dst-site-logo' === $name ) {
 			$attrs = $this->resolve_site_logo( $attrs );
@@ -141,9 +169,15 @@ final class SBS_Importer_Block_Converter {
 	}
 
 	private function merge_node_metadata( string $name, array $attrs, array $node, array $context ): array {
-		$registered = class_exists( 'WP_Block_Type_Registry' ) ? WP_Block_Type_Registry::get_instance()->get_registered( $name ) : null;
-		$known      = $registered && is_array( $registered->attributes ) ? $registered->attributes : array();
-		$has_attr   = static fn( string $key ): bool => empty( $known ) || array_key_exists( $key, $known );
+		/*
+		 * Asked of the contract, not of `block.json`. The theme adds `dsPadding`,
+		 * `dsEffects`, `dsContainer` and `classVariant` from JavaScript, so a
+		 * `block.json` lookup answers "no" for every one of them and this method
+		 * used to refuse to write them — losing the band spacing and the scroll
+		 * effects of every section whose export carries them on the node.
+		 */
+		$contract = $this->contract();
+		$has_attr = static fn( string $key ): bool => $contract->accepts( $name, $key );
 
 		if ( isset( $node['pattern'] ) && $has_attr( 'dsPatternAppliedPatternId' ) ) {
 			$current_pattern = (string) ( $attrs['dsPatternAppliedPatternId'] ?? '' );
@@ -202,18 +236,19 @@ final class SBS_Importer_Block_Converter {
 	}
 
 	private function record_unknown_attributes( string $name, array $attrs ): void {
-		if ( ! str_starts_with( $name, 'ds-blocks/' ) || ! class_exists( 'WP_Block_Type_Registry' ) ) {
+		if ( ! str_starts_with( $name, 'ds-blocks/' ) ) {
 			return;
 		}
-		$registered = WP_Block_Type_Registry::get_instance()->get_registered( $name );
-		if ( ! $registered || ! is_array( $registered->attributes ) || empty( $registered->attributes ) ) {
-			return;
-		}
-		$unknown = array_values( array_diff( array_keys( $attrs ), array_keys( $registered->attributes ) ) );
+		/*
+		 * The same contract the writer uses, so a warning means the theme really
+		 * will ignore the setting. Reported against `block.json` alone, this told
+		 * the strategist that `dsPadding` and `dsContainerSideGap` were unknown on
+		 * six blocks per import — attributes the theme applies on every page.
+		 */
+		$unknown = $this->contract()->unknown( $name, $attrs );
 		if ( empty( $unknown ) ) {
 			return;
 		}
-		sort( $unknown );
 		$key = $name . ':' . implode( ',', $unknown );
 		if ( isset( $this->unknown_attribute_sets[ $key ] ) ) {
 			return;
